@@ -7,9 +7,10 @@ from src.core import template_manager as tplm
 
 logger = logging.getLogger(__name__)
 
-# ========================================
+# -----------------------------------------
 # 1. Template Loader for Non Retail S1+S2
-# ========================================
+# -----------------------------------------
+
 class NonRetailS1S2TemplateLoader(tplm.TemplateManager):
     def __init__(self, template_file_path:str):
         '''
@@ -21,29 +22,7 @@ class NonRetailS1S2TemplateLoader(tplm.TemplateManager):
             template_file_path=template_file_path
         )
 
-    @property
-    def required_sheets(self):
-        required_sheets = self._get_required_sheets()
-        return required_sheets
-
-    def template_importer(self) -> tplm.TemplateData:
-        '''
-        Import templates for Non Retail S1 + S2 operations
-        Returns TemplateData containing DataFrames for all required sheets
-        '''
-        # Get required sheets for this operation type and status
-        #sheets_to_import = self._get_required_sheets()
-
-        # Warning if no sheets are configured for operation type & status
-        if not self.required_sheets:
-            logger.warning(f"No sheets configured for {self.operation_type.value} {self.status.value} operations.")
-            return tplm.TemplateData(template={})
-        
-        # Read excel file with specific sheets and store as a dict
-        template_dict = self.read_excel_file(self.template_file_path, sheets=self.required_sheets)
-        return tplm.TemplateData(template=template_dict)
-    
-    def validate_template(self, data: tplm.TemplateData) -> tplm.TemplateValidationResult:
+    def _perform_specific_validation(self, data: tplm.TemplateData) -> tplm.TemplateValidationResult:
         '''
         Validate template for Non Retail S1 + S2 operations
         Performs validation checks on the imported data.
@@ -51,51 +30,12 @@ class NonRetailS1S2TemplateLoader(tplm.TemplateManager):
         errors = [] # List to collect validation errors
         warnings = [] # List to collect validation warnings
 
-        # List of sheets to be validated
-        #expected_sheets = self._get_required_sheets()
-
-        logger.info(f"Validating template for {self.operation_type.value} {self.status.value} operations.")
-
-        # -----------------------------
-        # 1.Basic validation checks
-        # -----------------------------
-    
-        logger.info("Performing basic validation checks...")
-
-        # Check if all expected sheets are present
-        missing_sheets = set(self.required_sheets) - set(data.template.keys())
-        if missing_sheets:
-            errors.append(f"Missing required sheets for {self.operation_type.value} {self.status.value}: {', '.join(missing_sheets)}")
-
-        # Check if any sheets are empty
-        for sheet_name, df in data.template.items():
-            if df.empty:
-                warnings.append(f"Sheet '{sheet_name}' is empty.")
-            elif df.shape[0] == 0:
-                warnings.append(f"Sheet '{sheet_name}' has no data rows.")
-
-        # ------------------------------
-        # 2.Specific validation checks
-        # ------------------------------
-
         logger.info("Performing specific validation checks...")
 
-        # Validate each sheet based on its expected structure
+        # Validate each sheet based on its specific requirements
         for sheet_name, df in data.template.items():
-            logger.info(f"Validating sheet: {sheet_name}")
             sheet_required_fields = cst.TEMPLATE_REQUIRED_FIELDS_CONFIG.get(sheet_name, [])
-            missing_columns = set(sheet_required_fields) - set(df.columns)
-
-            # Check if minimum required columns exist
-            if missing_columns:
-                errors.append(f"Missing columns in '{sheet_name}': {', '.join(missing_columns)}")
             
-            # Check if required columns have non-null data
-            for col in sheet_required_fields:
-                if col in df.columns:
-                    if df[col].isnull().all():
-                        errors.append(f"Column '{col}' in sheet '{sheet_name}' contains only null values.")
-
             # Check sheet F2-Mapping time steps
             if sheet_name == "F2-Mapping time steps":
                 # Check data sheet have numeric data in all minimum required columns
@@ -110,8 +50,7 @@ class NonRetailS1S2TemplateLoader(tplm.TemplateManager):
                             except (ValueError, TypeError):
                                 errors.append(f"Column '{col}' in sheet '{sheet_name}' should contain numeric data.")
 
-
-                # Get the number of time steps in F6-PD S1S2 Non Retail sheet, i.e. number of column name begin with time_step (case insensitive)
+                # Get the number of time steps in F6-PD S1S2 Non Retail sheet
                 f6_sheet_name = "F6-PD S1S2 Non Retail"
                 if f6_sheet_name in data.template:
                     f6_df = data.template[f6_sheet_name]
@@ -120,79 +59,133 @@ class NonRetailS1S2TemplateLoader(tplm.TemplateManager):
                     f6_pd_time_steps = 0
                     errors.append(f"Required sheet '{f6_sheet_name}' not found for time step validation.")
                     
-                # Check if number of time steps is the same as in F2-Mapping time steps sheet
+                # Check if number of time steps matches
                 if df.shape[0] != f6_pd_time_steps:
                     errors.append(f"Number of time steps in '{sheet_name}' does not match 'F6-PD S1S2 Non Retail'.")
                     logger.info(f"Number of time steps in '{sheet_name}': {df.shape[0]}")
                     logger.info(f"Number of time steps in 'F6-PD S1S2 Non Retail': {f6_pd_time_steps}")
             
             # Check sheets F4-Histo PD Multi Non Retail, F6-PD S1S2 Non Retail
+            if sheet_name in ["F4-Histo PD Multi Non Retail", "F6-PD S1S2 Non Retail"]:
+                pass
+        
+        return errors, warnings
 
-        # ------------------------------
-        # 3.Specific validation checks
-        # ------------------------------
 
-        logger.info("Performing specific validation checks...")
+# -----------------------------------------
+# 2. Template Loader for Retail S1+S2
+# -----------------------------------------
+class RetailS1S2TemplateLoader(tplm.TemplateManager):
+    def __init__(self, template_file_path:str):
+        '''
+        Initialize the template loader for Retail S1 + S2 operations
+        '''
+        super().__init__(
+            operation_type=cst.OperationType.RETAIL,
+            operation_status=cst.OperationStatus.PERFORMING,
+            template_file_path=template_file_path
+        )
 
-        # Validate each sheet based on its expected structure
-        for sheet_name, df in data.template.items():
-            logger.info(f"Validating sheet: {sheet_name}")
-            sheet_required_fields = cst.TEMPLATE_REQUIRED_FIELDS_CONFIG.get(sheet_name, [])
-            missing_columns = set(sheet_required_fields) - set(df.columns)
+    def _perform_specific_validation(self, data: tplm.TemplateData) -> tuple[list[str], list[str]]:
+        '''
+        Perform specific validation checks for Retail S1 + S2 operations.
+        '''
+        errors = []
+        warnings = []
+        
+        # Add specific validation logic for Retail S1S2
+        
+        return errors, warnings
 
-            # Check if minimum required columns exist
-            if missing_columns:
-                errors.append(f"Missing columns in '{sheet_name}': {', '.join(missing_columns)}")
+# -----------------------------------------
+# 3. Template Loader for Retail S3
+# -----------------------------------------
+class RetailS3TemplateLoader(tplm.TemplateManager):
+    def __init__(self, template_file_path:str):
+        '''
+        Initialize the template loader for Retail S3 operations
+        '''
+        super().__init__(
+            operation_type=cst.OperationType.RETAIL,
+            operation_status=cst.OperationStatus.DEFAULTED,
+            template_file_path=template_file_path
+        )
 
-            # Check if required columns have non-null data
-            for col in sheet_required_fields:
-                if col in df.columns:
-                    if df[col].isnull().all():
-                        errors.append(f"Column '{col}' in sheet '{sheet_name}' contains only null values.")
+    def _perform_specific_validation(self, data: tplm.TemplateData) -> tuple[list[str], list[str]]:
+        '''
+        Perform specific validation checks for Retail S3 operations.
+        '''
+        errors = []
+        warnings = []
+        
+        # Add specific validation logic for Retail S3
+        
+        return errors, warnings
 
-            # Check sheet F2-Mapping time steps
-            if sheet_name == "F2-Mapping time steps":
-                # Check data sheet have numeric data in all minimum required columns
-                numeric_columns = df.select_dtypes(include=['number']).columns
-                non_numeric_required = set(sheet_required_fields) - set(numeric_columns)
-                if non_numeric_required:
-                    # Check if these columns contain numeric data but are stored as object type
-                    for col in non_numeric_required:
-                        if col in df.columns:
-                            try:
-                                pd.to_numeric(df[col], errors='raise')
-                            except (ValueError, TypeError):
-                                errors.append(f"Column '{col}' in sheet '{sheet_name}' should contain numeric data.")
+# ========================================
+# Template Loader Factory
+# ========================================
 
-                # Get the number of time steps in F6-PD S1S2 Non Retail sheet, i.e. number of column name begin with time_step (case insensitive)
-                f6_sheet_name = "F6-PD S1S2 Non Retail"
-                if f6_sheet_name in data.template:
-                    f6_df = data.template[f6_sheet_name]
-                    f6_pd_time_steps = sum(1 for col in f6_df.columns if col.lower().startswith('time_step'))
-                else:
-                    f6_pd_time_steps = 0
-                    errors.append(f"Required sheet '{f6_sheet_name}' not found for time step validation.")
+class TemplateLoaderFactory:
+    """
+    Factory class for creating appropriate template loaders based on operation type and status.
+    """
 
-                # Check if number of time steps is the same as in F2-Mapping time steps sheet
-                if df.shape[0] != f6_pd_time_steps:
-                    errors.append(f"Number of time steps in '{sheet_name}' does not match 'F6-PD S1S2 Non Retail'.")
-                    logger.info(f"Number of time steps in '{sheet_name}': {df.shape[0]}")
-                    logger.info(f"Number of time steps in 'F6-PD S1S2 Non Retail': {f6_pd_time_steps}")
+    # Registry mapping operation type & status to template loader classes
+    _registry_loader: dict[tuple[cst.OperationType, cst.OperationStatus], tplm.TemplateManager] = {
+        (cst.OperationType.RETAIL, cst.OperationStatus.PERFORMING): RetailS1S2TemplateLoader,
+        (cst.OperationType.RETAIL, cst.OperationStatus.DEFAULTED): RetailS3TemplateLoader,
+        (cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING): NonRetailS1S2TemplateLoader
+    }
 
-            # Check sheets F4-Histo PD Multi Non Retail, F6-PD S1S2 Non Retail
+    @classmethod
+    def get_template_loader(cls, operation_type: cst.OperationType, operation_status: cst.OperationStatus, 
+                            template_file_path: str) -> tplm.TemplateManager:
+        """
+            Get the appropriate template loader based on operation type and status
+            
+            Args:
+                operation_type: The type of operation (NON_RETAIL, RETAIL)
+                operation_status: The status of operation (PERFORMING, DEFAULTED)
+                template_file_path: Path to the template file
+                
+            Returns:
+                TemplateManager: The appropriate template loader instance
+                
+            Raises:
+                ValueError: If no loader is found for the given operation type and status
+        """
+        # Get the key as combination of operation type and status
+        key = (operation_type, operation_status)
 
-        # --------------------------------
-        # 4.Summary of validation errors
-        # --------------------------------
-        is_valid = len(errors) == 0
+        # Handle case where key is not found in registry
+        if key not in cls._registry_loader:
+            raise ValueError(f"No template loader found for {operation_type.value} - {operation_status.value}")
 
-        logger.info(f"Validation completed for {self.operation_type.value} {self.status.value} operations.")
-        logger.info(f"Validation result: {'Passed' if is_valid else 'Failed'}")
+        # Get the loader class from the registry
+        loader_class = cls._registry_loader[key]
+        logger.info(f"Creating template loader for {operation_type.value} - {operation_status.value}")
 
-        return tplm.TemplateValidationResult(
-            is_valid=is_valid, 
-            errors=errors, 
-            warnings=warnings, 
-            template_name=f"{self.operation_type.value} {self.status.value} Template",
-            )
+        return loader_class(template_file_path)
 
+# ==========================================
+# ENTRY POINT FOR TEMPLATE LOADER
+# ==========================================
+
+def template_loader(operation_type: cst.OperationType,
+                    operation_status: cst.OperationStatus,
+                    template_file_path: str) -> tplm.TemplateManager:
+    """
+    Entry point function to get a template loader instance for importing & validating templates.
+
+    Args:
+        operation_type: The type of operation (NON_RETAIL, RETAIL)
+        operation_status: The status of operation (PERFORMING, DEFAULTED)
+        template_file_path: Path to the template file
+        
+    Returns:
+        TemplateManager: The appropriate template loader instance
+    """
+
+    # Use the factory to get the appropriate template loader
+    return TemplateLoaderFactory.get_template_loader(operation_type, operation_status, template_file_path)

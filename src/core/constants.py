@@ -79,3 +79,33 @@ TEMPLATE_REQUIRED_FIELDS_CONFIG: Dict[str, List[str]] = {
     "Mapping fields Retail": ["Field1", "Field2"],
     "Data Import Retail": ["ImportField1", "ImportField2"]
 }
+
+# Configuration for data loading per operation type and operation status
+DATA_LOADER_CONFIG: Dict[Tuple[OperationType, OperationStatus], Dict[str, str]] = {
+    # Non Retail S1+S2 configuration
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): {
+        'csv_separator': None,
+        'decimal': ",",
+        'encoding': 'utf-8',
+        'engine': 'python',
+        'dtype': None
+    },
+
+    # Retail S1+S2 configuration
+    (OperationType.RETAIL, OperationStatus.PERFORMING): {
+        'csv_separator': None,
+        'decimal': ',',
+        'encoding': 'utf-8',
+        'engine': 'python',
+        'dtype': None
+    },
+
+    # Retail S3 configuration
+    (OperationType.RETAIL, OperationStatus.DEFAULTED): {
+        'csv_separator': None,
+        'decimal': ',',
+        'encoding': 'utf-8',
+        'engine': 'python',
+        'dtype': None
+    }
+}

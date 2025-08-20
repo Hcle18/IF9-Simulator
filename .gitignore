@@ -16,3 +16,6 @@ env/
 .pyenv/
 pip-wheel-metadata/
 *.virtualenv
+
+# Sample folder
+sample/
