@@ -1,12 +1,8 @@
-import logging
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Dict, List, Union, Optional
-import pandas as pd
-from pathlib import Path
+# Global import
+from src.core.librairies import *
 
 # Local import
-from src.core import constants as cst
+from src.core import config as cst
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -28,7 +24,7 @@ class TemplateValidationResult:
     warnings: List[str]
     template_name: Optional[str] = None
 
-class TemplateManager(ABC):
+class BaseTemplate(ABC):
     '''
     Classe de base pour la gestion des templates.
     Définit l'interface pour les classes de gestion de templates.

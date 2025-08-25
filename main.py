@@ -1,9 +1,45 @@
-import pandas as pd
-#dic_test = {"sheet1": pd.DataFrame(), "sheet2": pd.DataFrame()}
+# Global import
+from src.core.librairies import *
 
-#print(", ".join(dic_test.keys()))
+# Local import
+from src.core import config as cst
+from src.core import base_data as bcls
+from src.core import base_template as tplm
+from src.data import data_loader as dl
+from src.data import data_validator as dv
+from src.templates import template_loader as tpl
+from src.ecl_parameters import time_steps as ts
 
 
-sheet_fields_test = ["CALCULATOR_COLUMN_NAME", "SIMULATION_DATA_COLUMN_NAME", "FORMAT", "MEANING"]
-sheet_required_fields = ["CALCULATOR_COLUMN_NAME", "SIMULATION_DATA_COLUMN_NAME"]
-missing_columns = set(sheet_required_fields) - set(sheet_fields_test)
+if __name__ == "__main__": 
+    operation_type = cst.OperationType.NON_RETAIL
+    operation_status = cst.OperationStatus.PERFORMING
+
+    # Simulation data
+    file_name = "sample_non_retail.zip"
+    file_path = os.path.join("sample", "data", file_name)
+
+    importer = dl.get_importer(file_path, operation_type, operation_status)
+    #print(importer)
+
+    # Templates
+    template_path = r".\sample\templates\Template_outil_V1.xlsx"
+    template_loader = tpl.template_loader(operation_type, operation_status, template_path)
+    #print(template_loader.required_sheets)
+
+    # Importing & validating templates
+    NR_template_data = template_loader.template_importer()
+    print(NR_template_data)
+    template_validation = template_loader.validate_template(NR_template_data)
+
+    # Data loader
+    operation_nr_data = dl.data_loader(importer)
+    print(f"Operation NR Data Columns: {operation_nr_data.data.columns}")
+    # Data validation
+    NR_data_validator = dv.NRS1S2DataValidator(operation_nr_data, NR_template_data)
+    df_mapped = NR_data_validator.mapping_fields()
+    print(f"After mapping Data Columns: {df_mapped.columns}")
+
+    # Calculate maturity
+    df_mapped['RESIDUAL_MATURITY_MONTHS'] = df_mapped.apply(lambda x: ts.maturity(x['EXPOSURE_END_DATE'], x['AS_OF_DATE']), axis=1)
+    

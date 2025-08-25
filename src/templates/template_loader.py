@@ -2,8 +2,8 @@ import logging
 import pandas as pd
 
 # Local import
-from src.core import constants as cst
-from src.core import template_manager as tplm
+from src.core import config as cst
+from src.core import base_template as tplm
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 # 1. Template Loader for Non Retail S1+S2
 # -----------------------------------------
 
-class NonRetailS1S2TemplateLoader(tplm.TemplateManager):
+class NonRetailS1S2TemplateLoader(tplm.BaseTemplate):
     def __init__(self, template_file_path:str):
         '''
         Initialize the template loader for Non Retail S1 + S2 operations
@@ -75,7 +75,7 @@ class NonRetailS1S2TemplateLoader(tplm.TemplateManager):
 # -----------------------------------------
 # 2. Template Loader for Retail S1+S2
 # -----------------------------------------
-class RetailS1S2TemplateLoader(tplm.TemplateManager):
+class RetailS1S2TemplateLoader(tplm.BaseTemplate):
     def __init__(self, template_file_path:str):
         '''
         Initialize the template loader for Retail S1 + S2 operations
@@ -100,7 +100,7 @@ class RetailS1S2TemplateLoader(tplm.TemplateManager):
 # -----------------------------------------
 # 3. Template Loader for Retail S3
 # -----------------------------------------
-class RetailS3TemplateLoader(tplm.TemplateManager):
+class RetailS3TemplateLoader(tplm.BaseTemplate):
     def __init__(self, template_file_path:str):
         '''
         Initialize the template loader for Retail S3 operations
@@ -132,7 +132,7 @@ class TemplateLoaderFactory:
     """
 
     # Registry mapping operation type & status to template loader classes
-    _registry_loader: dict[tuple[cst.OperationType, cst.OperationStatus], tplm.TemplateManager] = {
+    _registry_loader: dict[tuple[cst.OperationType, cst.OperationStatus], tplm.BaseTemplate] = {
         (cst.OperationType.RETAIL, cst.OperationStatus.PERFORMING): RetailS1S2TemplateLoader,
         (cst.OperationType.RETAIL, cst.OperationStatus.DEFAULTED): RetailS3TemplateLoader,
         (cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING): NonRetailS1S2TemplateLoader
@@ -140,7 +140,7 @@ class TemplateLoaderFactory:
 
     @classmethod
     def get_template_loader(cls, operation_type: cst.OperationType, operation_status: cst.OperationStatus, 
-                            template_file_path: str) -> tplm.TemplateManager:
+                            template_file_path: str) -> tplm.BaseTemplate:
         """
             Get the appropriate template loader based on operation type and status
             
@@ -150,8 +150,8 @@ class TemplateLoaderFactory:
                 template_file_path: Path to the template file
                 
             Returns:
-                TemplateManager: The appropriate template loader instance
-                
+                BaseTemplate: The appropriate template loader instance
+
             Raises:
                 ValueError: If no loader is found for the given operation type and status
         """
@@ -169,12 +169,12 @@ class TemplateLoaderFactory:
         return loader_class(template_file_path)
 
 # ==========================================
-# ENTRY POINT FOR TEMPLATE LOADER
+# ENTRY POINT TO CREATE TEMPLATE LOADER
 # ==========================================
 
 def template_loader(operation_type: cst.OperationType,
                     operation_status: cst.OperationStatus,
-                    template_file_path: str) -> tplm.TemplateManager:
+                    template_file_path: str) -> tplm.BaseTemplate:
     """
     Entry point function to get a template loader instance for importing & validating templates.
 
@@ -184,8 +184,18 @@ def template_loader(operation_type: cst.OperationType,
         template_file_path: Path to the template file
         
     Returns:
-        TemplateManager: The appropriate template loader instance
+        BaseTemplate: The appropriate template loader instance
     """
 
     # Use the factory to get the appropriate template loader
     return TemplateLoaderFactory.get_template_loader(operation_type, operation_status, template_file_path)
+
+if __name__ == "__main__":
+    template_path = r".\sample\templates\Template_outil_V1.xlsx"
+
+    template_loader = template_loader(cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING, template_path)
+    print(template_loader.required_sheets)
+
+    # Importing templates
+    NR_template_data = template_loader.template_importer()
+    print(NR_template_data)

@@ -1,15 +1,10 @@
-# Librairies
-import os
-import pandas as pd
-from pathlib import Path
-import zipfile
-import fnmatch
-import logging
-from typing import Union, List, Dict
+# Global import
+from src.core.librairies import *
 
 # Local import
-from src.core import constants as cst
-from src.core import base_classes as bcls
+from src.core import config as cst
+from src.core import base_data as bcls
+
 
 class ExcelImporter(bcls.BaseImporter):
     '''
@@ -28,7 +23,7 @@ class ExcelImporter(bcls.BaseImporter):
         # Child attributes for selecting sheet name
         self.sheet_name = sheet_name
     
-    def load_data(self) -> pd.DataFrame:
+    def load_data(self) -> bcls.OperationData:
         try:
             df = pd.read_excel(self.file_path, sheet_name=self.sheet_name)
             if isinstance(df, dict):
@@ -37,7 +32,7 @@ class ExcelImporter(bcls.BaseImporter):
                     if len(list(df.keys())) > 1:
                          logging.warning(f"Multiple sheets detected. Using the first sheet: {first_sheet}")
                     df = df[first_sheet]
-            return df
+            return bcls.OperationData(data=df, operation_type=self.operation_type, operation_status=self.status)
         except FileNotFoundError:
             logging.error(f"File not found: {self.file_path}")
             raise FileNotFoundError(f"File not found: {self.file_path}")
@@ -59,7 +54,7 @@ class ZipCSVImporter(bcls.BaseImporter):
         # Inherit from BaseImporter
         super().__init__(file_path, operation_type, operation_status)
 
-    def load_data(self) -> pd.DataFrame: 
+    def load_data(self) -> bcls.OperationData: 
         try:
             # Get data configuration for the operation type and status
             data_config = cst.DATA_LOADER_CONFIG.get(
@@ -99,8 +94,10 @@ class ZipCSVImporter(bcls.BaseImporter):
                 logging.warning(f"Multiple CSV files found in the zip: {self.file_path}. Concatenating all.")
 
             # Concatenate and return a dataframe
-            return pd.concat(data, ignore_index=True)
-        
+            return bcls.OperationData(data=bcls.pd.concat(data, ignore_index=True),
+                                       operation_type=self.operation_type,
+                                       operation_status=self.status)
+
         except FileNotFoundError:
             logging.error(f"File not found: {self.file_path}")
             raise
@@ -132,17 +129,23 @@ def get_importer(file_path: str,
         logging.error(f"Unsupported file type: {file_path}. Please use one of the following:{', '.join(cst.SUPPORTED_FILE_TYPES)}")
         raise ValueError(f"Unsupported file type: {file_path}")
 
-def data_loader(importer: bcls.BaseImporter) -> pd.DataFrame:
+# ==========================================
+# ENTRY POINT TO CREATE DATA LOADER
+# ==========================================
+def data_loader(importer: bcls.BaseImporter) -> bcls.OperationData:
     '''
     Load data using the provided importer.
     '''
-    df = importer.load_data()
-    if df is not None and not df.empty:
-        logging.info(f"Data loaded successfully from {importer.file_path}. Shape: {df.shape}")
-        return df
+    operation = importer.load_data()
+    if operation.data is not None and not operation.data.empty:
+        logging.info(f"Data loaded successfully from {importer.file_path}. Shape: {operation.data.shape}")
+        return operation
     else:
         logging.error("Failed to load data or data is empty.")
         raise ValueError("Failed to load data or data is empty.")
+
+
+
 
 if __name__ == "__main__":
     # Example usage
@@ -153,6 +156,6 @@ if __name__ == "__main__":
     importer = get_importer(file_path, cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING)
     #importer = get_importer(file_path)
     print(importer)
-    df = data_loader(importer)
+    df = data_loader(importer).data
     print(df.head())
     print(df.dtypes)
