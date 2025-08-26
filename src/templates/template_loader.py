@@ -12,28 +12,21 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------
 
 class NonRetailS1S2TemplateLoader(tplm.BaseTemplate):
-    def __init__(self, template_file_path:str):
-        '''
-        Initialize the template loader for Non Retail S1 + S2 operations
-        '''
-        super().__init__(
-            operation_type=cst.OperationType.NON_RETAIL,
-            operation_status=cst.OperationStatus.PERFORMING,
-            template_file_path=template_file_path
-        )
 
-    def _perform_specific_validation(self, data: tplm.TemplateData) -> tplm.TemplateValidationResult:
+    def _perform_specific_validation(self) -> tplm.TemplateValidationResult:
         '''
         Validate template for Non Retail S1 + S2 operations
         Performs validation checks on the imported data.
         '''
+        data = self.data.template_data
+
         errors = [] # List to collect validation errors
         warnings = [] # List to collect validation warnings
 
         logger.info("Performing specific validation checks...")
 
         # Validate each sheet based on its specific requirements
-        for sheet_name, df in data.template.items():
+        for sheet_name, df in data.items():
             sheet_required_fields = cst.TEMPLATE_REQUIRED_FIELDS_CONFIG.get(sheet_name, [])
             
             # Check sheet F2-Mapping time steps
@@ -52,8 +45,8 @@ class NonRetailS1S2TemplateLoader(tplm.BaseTemplate):
 
                 # Get the number of time steps in F6-PD S1S2 Non Retail sheet
                 f6_sheet_name = "F6-PD S1S2 Non Retail"
-                if f6_sheet_name in data.template:
-                    f6_df = data.template[f6_sheet_name]
+                if f6_sheet_name in data:
+                    f6_df = data[f6_sheet_name]
                     f6_pd_time_steps = sum(1 for col in f6_df.columns if col.lower().startswith('time_step'))
                 else:
                     f6_pd_time_steps = 0
@@ -76,17 +69,16 @@ class NonRetailS1S2TemplateLoader(tplm.BaseTemplate):
 # 2. Template Loader for Retail S1+S2
 # -----------------------------------------
 class RetailS1S2TemplateLoader(tplm.BaseTemplate):
-    def __init__(self, template_file_path:str):
+    def __init__(self, ecl_operation_data: cst.ECLOperationData):
         '''
         Initialize the template loader for Retail S1 + S2 operations
+        
+        Args:
+            ecl_operation_data: Container with operation details and template file path
         '''
-        super().__init__(
-            operation_type=cst.OperationType.RETAIL,
-            operation_status=cst.OperationStatus.PERFORMING,
-            template_file_path=template_file_path
-        )
+        super().__init__(ecl_operation_data)
 
-    def _perform_specific_validation(self, data: tplm.TemplateData) -> tuple[list[str], list[str]]:
+    def _perform_specific_validation(self) -> tuple[list[str], list[str]]:
         '''
         Perform specific validation checks for Retail S1 + S2 operations.
         '''
@@ -101,17 +93,16 @@ class RetailS1S2TemplateLoader(tplm.BaseTemplate):
 # 3. Template Loader for Retail S3
 # -----------------------------------------
 class RetailS3TemplateLoader(tplm.BaseTemplate):
-    def __init__(self, template_file_path:str):
+    def __init__(self, ecl_operation_data: cst.ECLOperationData):
         '''
         Initialize the template loader for Retail S3 operations
+        
+        Args:
+            ecl_operation_data: Container with operation details and template file path
         '''
-        super().__init__(
-            operation_type=cst.OperationType.RETAIL,
-            operation_status=cst.OperationStatus.DEFAULTED,
-            template_file_path=template_file_path
-        )
+        super().__init__(ecl_operation_data)
 
-    def _perform_specific_validation(self, data: tplm.TemplateData) -> tuple[list[str], list[str]]:
+    def _perform_specific_validation(self) -> tuple[list[str], list[str]]:
         '''
         Perform specific validation checks for Retail S3 operations.
         '''
@@ -139,42 +130,37 @@ class TemplateLoaderFactory:
     }
 
     @classmethod
-    def get_template_loader(cls, operation_type: cst.OperationType, operation_status: cst.OperationStatus, 
-                            template_file_path: str) -> tplm.BaseTemplate:
+    def get_template_loader(cls, ecl_operation_data: cst.ECLOperationData) -> tplm.BaseTemplate:
         """
-            Get the appropriate template loader based on operation type and status
+        Get the appropriate template loader based on operation type and status from ECLOperationData.
+        
+        Args:
+            ecl_operation_data: Container with operation details and template file path
             
-            Args:
-                operation_type: The type of operation (NON_RETAIL, RETAIL)
-                operation_status: The status of operation (PERFORMING, DEFAULTED)
-                template_file_path: Path to the template file
-                
-            Returns:
-                BaseTemplate: The appropriate template loader instance
+        Returns:
+            BaseTemplate: The appropriate template loader instance
 
-            Raises:
-                ValueError: If no loader is found for the given operation type and status
+        Raises:
+            ValueError: If no loader is found for the given operation type and status
         """
         # Get the key as combination of operation type and status
-        key = (operation_type, operation_status)
+        key = (ecl_operation_data.operation_type, ecl_operation_data.operation_status)
 
         # Handle case where key is not found in registry
         if key not in cls._registry_loader:
-            raise ValueError(f"No template loader found for {operation_type.value} - {operation_status.value}")
+            raise ValueError(f"No template loader found for {ecl_operation_data.operation_type.value} - {ecl_operation_data.operation_status.value}")
 
         # Get the loader class from the registry
         loader_class = cls._registry_loader[key]
-        logger.info(f"Creating template loader for {operation_type.value} - {operation_status.value}")
+        logger.info(f"Creating template loader for {ecl_operation_data.operation_type.value} - {ecl_operation_data.operation_status.value}")
 
-        return loader_class(template_file_path)
+        return loader_class(ecl_operation_data)
 
 # ==========================================
 # ENTRY POINT TO CREATE TEMPLATE LOADER
 # ==========================================
 
-def template_loader(operation_type: cst.OperationType,
-                    operation_status: cst.OperationStatus,
-                    template_file_path: str) -> tplm.BaseTemplate:
+def template_loader(ecl_operation_data: cst.ECLOperationData) -> tplm.BaseTemplate:
     """
     Entry point function to get a template loader instance for importing & validating templates.
 
@@ -188,14 +174,36 @@ def template_loader(operation_type: cst.OperationType,
     """
 
     # Use the factory to get the appropriate template loader
-    return TemplateLoaderFactory.get_template_loader(operation_type, operation_status, template_file_path)
+    return TemplateLoaderFactory.get_template_loader(ecl_operation_data)
+
 
 if __name__ == "__main__":
+    # Example usage with the new ECLOperationData structure
     template_path = r".\sample\templates\Template_outil_V1.xlsx"
 
-    template_loader = template_loader(cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING, template_path)
-    print(template_loader.required_sheets)
+    # Method 1: Using the traditional approach
+    print("=== Method 1: Traditional Template Loader ===")
+    loader = template_loader(cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING, template_path)
+    print(f"Required sheets: {loader.required_sheets}")
 
-    # Importing templates
-    NR_template_data = template_loader.template_importer()
-    print(NR_template_data)
+    # Load templates manually
+    template_data = loader.template_importer()
+    print(f"Loaded template data: {list(template_data.template.keys())}")
+
+    # Method 2: Using the convenience function
+    print("\n=== Method 2: Convenience Function ===")
+    try:
+        ecl_data = load_template_data(
+            operation_type=cst.OperationType.NON_RETAIL,
+            operation_status=cst.OperationStatus.PERFORMING,
+            template_file_path=template_path
+        )
+        
+        print(f"Template data loaded: {list(ecl_data.template_data.keys()) if ecl_data.template_data else 'None'}")
+        print(f"Validation results: {ecl_data.validation_results}")
+        print(f"Ready for calculation: {hasattr(ecl_data, 'is_valid_for_calculation') and callable(getattr(ecl_data, 'is_valid_for_calculation'))}")
+        
+    except FileNotFoundError:
+        print("Template file not found - this is expected in the example")
+    except Exception as e:
+        print(f"Error: {e}")

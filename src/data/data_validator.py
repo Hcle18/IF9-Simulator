@@ -18,11 +18,76 @@ class NRS1S2DataValidator(bcls.BaseValidator):
     '''
     Custom class for Non Retail S1+S2 data validation
     '''
-    def __init__(self, simu_data: bcls.OperationData, template_data: tplm.TemplateData):
-        super().__init__(simu_data, template_data)
 
-    def data_validator(self):
+    def validate_data(self):
+        super().validate_data()
+        logger.info("Successfully validated Non Retail S1+S2 data.")
         pass
+
+# ========================================
+# Data Validator Factory
+# ========================================
+
+class DataValidatorFactory:
+    """
+    Factory class for creating appropriate data validators based on operation type and status.
+    """
+
+    # Registry mapping operation type & status to data validator classes
+    _registry_loader: dict[tuple[cst.OperationType, cst.OperationStatus], bcls.BaseValidator] = {
+        (cst.OperationType.RETAIL, cst.OperationStatus.PERFORMING): None,
+        (cst.OperationType.RETAIL, cst.OperationStatus.DEFAULTED): None,
+        (cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING): NRS1S2DataValidator
+    }
+
+    @classmethod
+    def get_data_validator(cls, ecl_operation_data: cst.ECLOperationData) -> bcls.BaseValidator:
+        """
+        Get the appropriate data validator based on operation type and status from ECLOperationData.
+
+        Args:
+            ecl_operation_data: Container with operation details and template file path
+            
+        Returns:
+            BaseECLCalculator: The appropriate ECL calculator instance
+
+        Raises:
+            ValueError: If no loader is found for the given operation type and status
+        """
+        # Get the key as combination of operation type and status
+        key = (ecl_operation_data.operation_type, ecl_operation_data.operation_status)
+
+        # Handle case where key is not found in registry
+        if key not in cls._registry_loader:
+            raise ValueError(f"No template loader found for {ecl_operation_data.operation_type.value} - {ecl_operation_data.operation_status.value}")
+
+        # Get the validator class from the registry
+        validator_class = cls._registry_loader[key]
+        logger.info(f"Creating data validator for {ecl_operation_data.operation_type.value} - {ecl_operation_data.operation_status.value}")
+
+        return validator_class(ecl_operation_data)
+
+# ==========================================
+# ENTRY POINT TO CREATE DATA VALIDATOR
+# ==========================================
+
+def data_validator(ecl_operation_data: cst.ECLOperationData) -> bcls.BaseValidator:
+    """
+    Entry point function to get a template loader instance for importing & validating templates.
+
+    Args:
+        operation_type: The type of operation (NON_RETAIL, RETAIL)
+        operation_status: The status of operation (PERFORMING, DEFAULTED)
+        template_file_path: Path to the template file
+        
+    Returns:
+        BaseTemplate: The appropriate template loader instance
+    """
+
+    # Use the factory to get the appropriate data validator
+    return DataValidatorFactory.get_data_validator(ecl_operation_data)
+
+
 
 
 if __name__ == "__main__": 

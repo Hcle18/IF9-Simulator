@@ -1,5 +1,8 @@
 from enum import Enum
 from typing import Dict, List, Tuple
+from dataclasses import dataclass
+import pandas as pd
+
 
 # List of supported file type for data loader
 SUPPORTED_FILE_TYPES = ['xls', '.xlsx', '.zip']
@@ -19,6 +22,32 @@ class OperationStatus(Enum):
     '''
     PERFORMING = "S1+S2" # Stage 1 + Stage 2
     DEFAULTED = "S3" # Stage 3
+
+
+@dataclass 
+class ECLOperationData:
+    '''
+    Unified data container for ECL operations.
+    
+    This class serves as the single source of truth for all ECL-related data,
+    containing both the simulation data and template data needed for calculations.
+    
+    Attributes:
+        operation_type: Type of operation (RETAIL, NON_RETAIL)
+        operation_status: Status of operation (PERFORMING, DEFAULTED)
+        template_file_path: Path to the Excel template file
+        data_file_path: Path to the simulation data file
+        df: Main simulation data DataFrame
+        template_data: Dictionary containing template DataFrames by sheet name
+    '''
+    operation_type: OperationType
+    operation_status: OperationStatus
+    template_file_path: str
+    data_file_path: str 
+    df: pd.DataFrame = None
+    template_data: Dict[str, pd.DataFrame] = None
+
+    
 
 # Excel sheets name to be used for importing data, depending on the operation type and status
 TEMPLATE_SHEETS_CONFIG: Dict[Tuple[OperationType, OperationStatus], List[str]] = {
@@ -93,6 +122,18 @@ MAPPING_FIELDS_TEMPLATES_CONFIG: Dict[Tuple[OperationType, OperationStatus], str
     # Retail S3 configuration
     (OperationType.RETAIL, OperationStatus.DEFAULTED): "Mapping fields Retail S3"
 }
+
+MAPPING_TIME_STEPS_TEMPLATES_CONFIG: Dict[Tuple[OperationType, OperationStatus], str] = {
+    # Non Retail S1+S2 configuration
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "F2-Mapping time steps",
+
+    # Retail S1+S2 configuration
+    (OperationType.RETAIL, OperationStatus.PERFORMING): "F2-Mapping time steps",
+
+    # Retail S3 configuration
+    (OperationType.RETAIL, OperationStatus.DEFAULTED): "F2-Mapping time steps"
+}
+
 
 # Configuration for data loading per operation type and operation status
 DATA_LOADER_CONFIG: Dict[Tuple[OperationType, OperationStatus], Dict[str, str]] = {

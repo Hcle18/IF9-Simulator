@@ -1,232 +1,105 @@
-"""
-Main ECL Calculator orchestrator that handles the complete ECL calculation workflow.
-
-This class serves as the main entry point and orchestrates:
-- Template import and validation
-- Simulation data import and validation  
-- ECL computation using appropriate strategy based on operation type and status
-"""
-
-# Global import
 from src.core.librairies import *
 
-# Local imports
 from src.core import config as cst
-from src.templates import template_loader as tpl
-from src.data import data_loader as dl
-from core.base_ecl_calculator import ECLCalculationInputs, ECLCalculationResults
-from src.ecl_calculation.ecl_calculator_factory import create_ecl_calculator
+from src.core import base_ecl_calculator as bcalc
 
-logger = logging.getLogger(__name__)
+from src.ecl_calculation.time_steps import maturity, nb_time_steps
+
+logger = logging.getLogger(__name__)  
+
+# ----------------------------------------
+# 1. Non Retail Performing ECL Calculator
+# ----------------------------------------
+
+class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
+    '''
+    Custom class for Non Retail S1+S2 ECL calculation
+    '''
+
+    def get_time_steps(self):
+        '''
+        Get the number of time steps and maturity from the template data.
+        '''
+
+        # Get the data for mapping template
+        template_name = cst.MAPPING_TIME_STEPS_TEMPLATES_CONFIG.get((self.data.operation_type, self.data.operation_status))
+
+        template_df = self.data.template_data.get(template_name)
+
+        # Residual maturity in months
+        self.data.df["RESIDUAL_MATURITY_MONTHS"] = self.data.df.apply(lambda x: maturity(x['EXPOSURE_END_DATE'], x['AS_OF_DATE']), axis=1)
+
+        # Number of steps
+        time_step_results = self.data.df["RESIDUAL_MATURITY_MONTHS"].apply(lambda x: nb_time_steps(x, template_df))
+        self.data.df["NB_MONTHS_LIST"] = time_step_results.apply(lambda x: x[1])
+        self.data.df["NB_TIME_STEPS"] = time_step_results.apply(lambda x: x[0])
+
+# ----------------------------------------
+# 2. Retail Performing ECL Calculator
+# ----------------------------------------
 
 
-class ECLCalculator:
+
+
+# ========================================
+# ECL Calculator Factory
+# ========================================
+
+class ECLCalculatorFactory:
     """
-    Main class for ECL computation orchestration.
-
-    The class handles:
-    - Templates import and validation
-    - Simulation data import and validation
-    - ECL computation based on templates and simulation data using appropriate strategy
+    Factory class for creating appropriate ECL calculators based on operation type and status.
     """
-    
-    def __init__(self, operation_type: cst.OperationType, operation_status: cst.OperationStatus):
+
+    # Registry mapping operation type & status to ECL calculator classes
+    _registry_loader: dict[tuple[cst.OperationType, cst.OperationStatus], bcalc.BaseECLCalculator] = {
+        (cst.OperationType.RETAIL, cst.OperationStatus.PERFORMING): None,
+        (cst.OperationType.RETAIL, cst.OperationStatus.DEFAULTED): None,
+        (cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING): NRS1S2ECLCalculator
+    }
+
+    @classmethod
+    def get_ecl_calculator(cls, ecl_operation_data: cst.ECLOperationData) -> bcalc.BaseECLCalculator:
         """
-        Initialize the ECL Calculator.
-        
+        Get the appropriate ECL calculator based on operation type and status from ECLOperationData.
+
         Args:
-            operation_type: Type of operation (RETAIL, NON_RETAIL)
-            operation_status: Status of operation (PERFORMING, DEFAULTED)
-        """
-        self.operation_type = operation_type
-        self.operation_status = operation_status
-        self.logger = logging.getLogger(f"{__name__}.ECLCalculator")
-        
-        # Initialize components
-        self.template_loader = None
-        self.data_importer = None
-        self.ecl_calculator_strategy = None
-        
-        # Data storage
-        self.template_data = None
-        self.simulation_data = None
-        self.ecl_results = None
-    
-    def load_template(self, template_file_path: str) -> bool:
-        """
-        Load and validate template file.
-        
-        Args:
-            template_file_path: Path to the template file
+            ecl_operation_data: Container with operation details and template file path
             
         Returns:
-            bool: True if template loaded successfully, False otherwise
-        """
-        try:
-            self.logger.info(f"Loading template for {self.operation_type.value} - {self.operation_status.value}")
-            
-            # Get template loader
-            self.template_loader = tpl.template_loader(
-                self.operation_type, 
-                self.operation_status, 
-                template_file_path
-            )
-            
-            # Import template
-            template_data = self.template_loader.template_importer()
-            
-            # Validate template
-            validation_result = self.template_loader.validate_template(template_data)
-            
-            if not validation_result.is_valid:
-                self.logger.error("Template validation failed:")
-                for error in validation_result.errors:
-                    self.logger.error(f"  - {error}")
-                return False
-            
-            if validation_result.warnings:
-                self.logger.warning("Template validation warnings:")
-                for warning in validation_result.warnings:
-                    self.logger.warning(f"  - {warning}")
-            
-            self.template_data = template_data.template
-            self.logger.info("Template loaded and validated successfully")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Error loading template: {e}")
-            return False
-    
-    def load_simulation_data(self, data_file_path: str) -> bool:
-        """
-        Load and validate simulation data.
-        
-        Args:
-            data_file_path: Path to the simulation data file
-            
-        Returns:
-            bool: True if data loaded successfully, False otherwise
-        """
-        try:
-            self.logger.info(f"Loading simulation data from: {data_file_path}")
-            
-            # Get data importer
-            self.data_importer = dl.get_importer(
-                data_file_path, 
-                self.operation_type, 
-                self.operation_status
-            )
-            
-            # Load data
-            self.simulation_data = dl.data_loader(self.data_importer)
-            
-            self.logger.info(f"Simulation data loaded successfully. Shape: {self.simulation_data.shape}")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Error loading simulation data: {e}")
-            return False
-    
-    def calculate_ecl(self, as_of_date: pd.Timestamp, scenarios: List[str]) -> ECLCalculationResults:
-        """
-        Calculate ECL using the appropriate strategy.
-        
-        Args:
-            as_of_date: The calculation date
-            scenarios: List of scenarios to calculate
-            
-        Returns:
-            ECLCalculationResults: Complete ECL calculation results
-            
+            BaseECLCalculator: The appropriate ECL calculator instance
+
         Raises:
-            ValueError: If template or simulation data not loaded
+            ValueError: If no loader is found for the given operation type and status
         """
-        if self.template_data is None:
-            raise ValueError("Template data not loaded. Call load_template() first.")
+        # Get the key as combination of operation type and status
+        key = (ecl_operation_data.operation_type, ecl_operation_data.operation_status)
+
+        # Handle case where key is not found in registry
+        if key not in cls._registry_loader:
+            raise ValueError(f"No template loader found for {ecl_operation_data.operation_type.value} - {ecl_operation_data.operation_status.value}")
+
+        # Get the calculator class from the registry
+        calculator_class = cls._registry_loader[key]
+        logger.info(f"Creating ECL calculator for {ecl_operation_data.operation_type.value} - {ecl_operation_data.operation_status.value}")
+
+        return calculator_class(ecl_operation_data)
+
+# ==========================================
+# ENTRY POINT TO CREATE ECL CALCULATOR
+# ==========================================
+
+def ecl_calculator(ecl_operation_data: cst.ECLOperationData) -> bcalc.BaseECLCalculator:
+    """
+    Entry point function to get a template loader instance for importing & validating templates.
+
+    Args:
+        operation_type: The type of operation (NON_RETAIL, RETAIL)
+        operation_status: The status of operation (PERFORMING, DEFAULTED)
+        template_file_path: Path to the template file
         
-        if self.simulation_data is None:
-            raise ValueError("Simulation data not loaded. Call load_simulation_data() first.")
-        
-        try:
-            self.logger.info(f"Starting ECL calculation for {self.operation_type.value} - {self.operation_status.value}")
-            
-            # Create ECL calculator strategy
-            self.ecl_calculator_strategy = create_ecl_calculator(
-                self.operation_type, 
-                self.operation_status
-            )
-            
-            # Prepare inputs
-            calculation_inputs = ECLCalculationInputs(
-                simulation_data=self.simulation_data,
-                template_data=self.template_data,
-                as_of_date=as_of_date,
-                scenarios=scenarios,
-                operation_type=self.operation_type,
-                operation_status=self.operation_status
-            )
-            
-            # Calculate ECL
-            self.ecl_results = self.ecl_calculator_strategy.calculate_ecl(calculation_inputs)
-            
-            self.logger.info("ECL calculation completed successfully")
-            return self.ecl_results
-            
-        except Exception as e:
-            self.logger.error(f"Error during ECL calculation: {e}")
-            raise
-    
-    def get_calculation_summary(self) -> Dict[str, Any]:
-        """
-        Get a summary of the ECL calculation.
-        
-        Returns:
-            Dictionary with calculation summary
-        """
-        if self.ecl_results is None:
-            return {"status": "No calculation performed"}
-        
-        return {
-            "operation_type": self.operation_type.value,
-            "operation_status": self.operation_status.value,
-            "calculator_used": self.ecl_calculator_strategy.__class__.__name__,
-            "total_exposures": len(self.simulation_data),
-            "template_sheets_used": list(self.template_data.keys()),
-            "calculation_details": self.ecl_results.calculation_details
-        }
-    
-    def export_results(self, output_path: str, format: str = 'excel') -> bool:
-        """
-        Export ECL calculation results to file.
-        
-        Args:
-            output_path: Path where to save the results
-            format: Export format ('excel', 'csv')
-            
-        Returns:
-            bool: True if export successful, False otherwise
-        """
-        if self.ecl_results is None:
-            self.logger.error("No ECL results to export. Run calculation first.")
-            return False
-        
-        try:
-            if format.lower() == 'excel':
-                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                    self.ecl_results.ecl_by_exposure.to_excel(writer, sheet_name='ECL_by_Exposure', index=False)
-                    self.ecl_results.ecl_summary.to_excel(writer, sheet_name='ECL_Summary', index=False)
-                    self.ecl_results.residual_maturity.to_excel(writer, sheet_name='Residual_Maturity', index=False)
-                    self.ecl_results.ead_amortization.to_excel(writer, sheet_name='EAD_Amortization', index=False)
-                    
-            elif format.lower() == 'csv':
-                # Export main results to CSV
-                base_path = output_path.replace('.csv', '')
-                self.ecl_results.ecl_by_exposure.to_csv(f"{base_path}_ecl_by_exposure.csv", index=False)
-                self.ecl_results.ecl_summary.to_csv(f"{base_path}_ecl_summary.csv", index=False)
-            
-            self.logger.info(f"ECL results exported to: {output_path}")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Error exporting results: {e}")
-            return False
+    Returns:
+        BaseTemplate: The appropriate template loader instance
+    """
+
+    # Use the factory to get the appropriate ECL calculator
+    return ECLCalculatorFactory.get_ecl_calculator(ecl_operation_data)

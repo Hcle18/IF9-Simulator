@@ -14,47 +14,52 @@ from src.utils.mapping_columns import mapping_columns
 # Module logger
 logger = logging.getLogger(__name__)
 
-@dataclass 
-class OperationData:
-    '''
-    
-    '''
-    data: pd.DataFrame
-    operation_type: cst.OperationType
-    operation_status: cst.OperationStatus
-
-
 class BaseImporter(ABC):
     '''
-    Basis class for data importers.
+    Base class for data importers.
+    All importers should use ECLOperationData as their primary data container.
     '''
 
-    def __init__(self,
-                 file_path: str,
-                 operation_type: cst.OperationType=None, 
-                 operation_status: cst.OperationStatus=None
-                 ):
-        self.operation_type = operation_type
-        self.status = operation_status
-        self.file_path = file_path
+    def __init__(self, ecl_operation_data: cst.ECLOperationData):
+        """
+        Initialize BaseImporter with ECLOperationData.
+        
+        Args:
+            ecl_operation_data: Container with operation details and file paths
+        """
+        self.data = ecl_operation_data
+        # self.operation_type = ecl_operation_data.operation_type
+        # self.operation_status = ecl_operation_data.operation_status
+        # self.data_file_path = ecl_operation_data.data_file_path
 
     @abstractmethod
-    def load_data(self) -> OperationData:
+    def load_data(self, **kwargs) -> pd.DataFrame:
         '''
-        Méthode abstraite pour importer des données.
-        :return: Une classe contenant les données importées.
+        Abstract method to import data.
+        
+        Returns:
+            pd.DataFrame: The imported data
         '''
         pass
 
 class BaseValidator(ABC):
     '''
-    Basis class for data validators.
+    Base class for data validators.
+    All validators should use ECLOperationData as their primary data container.
     '''
-    def __init__(self, simu_data: OperationData, template_data: tplm.TemplateData):
-        self.df = simu_data.data
-        self.operation_type = simu_data.operation_type
-        self.operation_status = simu_data.operation_status
-        self.template_data = template_data
+    
+    def __init__(self, ecl_operation_data: cst.ECLOperationData):
+        """
+        Initialize BaseValidator with ECLOperationData.
+        
+        Args:
+            ecl_operation_data: Container with operation details, data, and templates
+        """
+        self.data = ecl_operation_data
+        # self.operation_type = ecl_operation_data.operation_type
+        # self.operation_status = ecl_operation_data.operation_status
+        # self.df = ecl_operation_data.df
+        # self.template_data = ecl_operation_data.template_data
 
     def mapping_fields(self) -> pd.DataFrame:
         '''
@@ -62,32 +67,31 @@ class BaseValidator(ABC):
         :return: Un DataFrame pandas avec les champs mappés.
         '''
         # Get the template for mapping fields according to the operation type and the operation status
-        template_name = cst.MAPPING_FIELDS_TEMPLATES_CONFIG.get((self.operation_type, self.operation_status))
+        template_name = cst.MAPPING_FIELDS_TEMPLATES_CONFIG.get((self.data.operation_type, self.data.operation_status))
         if not template_name:
-            logger.error(f"No mapping template found for operation type {self.operation_type} and status {self.operation_status}")
-            return self.df
+            logger.error(f"No mapping template found for operation type {self.data.operation_type} and status {self.data.operation_status}")
+            return self.data.df
 
         # Get the mapping dataset from the template
-        mapping_dataset = self.template_data.template.get(template_name)
+        mapping_dataset = self.data.template_data.get(template_name)
         if mapping_dataset is None or mapping_dataset.empty:
             logger.error(f"Mapping template '{template_name}' not found in the provided template data.")
-            return self.df
+            return self.data.df
 
         # Get the mapping dictionary from the mapping dataset
         mapping_dict = dict(zip(mapping_dataset['CALCULATOR_COLUMN_NAME'], mapping_dataset['SIMULATION_DATA_COLUMN_NAME']))
 
         # Map the fields using the mapping dictionary
-        self.df = mapping_columns(input_df=self.df, field_mapping=mapping_dict)
-
-        return self.df
+        self.data.df = mapping_columns(input_df=self.data.df, field_mapping=mapping_dict)
 
     @abstractmethod
-    def data_validator(self) :
+    def validate_data(self) :
         '''
         Méthode abstraite pour valider les données du DataFrame importé.
         A customiser selon le type de d'opération (Retail, Non Retail) et le statut (S1+S2 / S3)
         : return: a dictionary with the validation type and results.
         '''
+        logger.info(f"Validating data for {self.data.operation_type.value} - {self.data.operation_status.value} operations")
         pass
 
     # Create rather a basic data validator (for all operation type & status) and a specific data validator

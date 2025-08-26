@@ -8,4 +8,12 @@
 # Global import
 from src.core.librairies import *
 
-def linear_amortisation(df: pd.DataFrame, outstanding_column: str,  )
+def get_amortization_type(df:pd.DataFrame):
+    pass
+
+
+def linear_amortization(df:pd.DataFrame):
+    max_residual_maturity = int(np.ceil(df["RESIDUAL_MATURITY_MONTHS"]))
+
+def in_fine_amortization(df:pd.DataFrame):
+    pass

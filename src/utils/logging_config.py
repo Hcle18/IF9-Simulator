@@ -45,7 +45,7 @@ def setup_logging(log_level: str = "INFO", log_file: str = None):
                 'level': log_level,
                 'formatter': 'detailed',
                 'filename': str(log_file),
-                'mode': 'a',
+                'mode': 'w', # Overwrite log file on each run
                 'encoding': 'utf-8'
             }
         },
