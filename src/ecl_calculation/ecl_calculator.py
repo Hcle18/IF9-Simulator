@@ -27,13 +27,21 @@ class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
         template_df = self.data.template_data.get(template_name)
 
         # Residual maturity in months
-        self.data.df["RESIDUAL_MATURITY_MONTHS"] = self.data.df.apply(lambda x: maturity(x['EXPOSURE_END_DATE'], x['AS_OF_DATE']), axis=1)
+        self.data.df["RESIDUAL_MATURITY_MONTHS"] =  maturity(self.data.df['EXPOSURE_END_DATE'], self.data.df['AS_OF_DATE'])
 
         # Number of steps
-        time_step_results = self.data.df["RESIDUAL_MATURITY_MONTHS"].apply(lambda x: nb_time_steps(x, template_df))
-        self.data.df["NB_MONTHS_LIST"] = time_step_results.apply(lambda x: x[1])
-        self.data.df["NB_TIME_STEPS"] = time_step_results.apply(lambda x: x[0])
+        #nb_steps, nb_months_list = nb_time_steps(self.data.df["RESIDUAL_MATURITY_MONTHS"], template_df)
+        self.data.df["NB_TIME_STEPS"] = nb_time_steps(self.data.df["RESIDUAL_MATURITY_MONTHS"], template_df)
+        # self.data.df["NB_MONTHS_LIST"] = nb_months_list
 
+        # Update mapping step to fit the maximum maturity
+        step_months = np.sort(template_df["NB_MONTHS"].to_numpy())
+        max_maturity = self.data.df["RESIDUAL_MATURITY_MONTHS"].max()
+        # Extend step_months to cover all contracts
+        while step_months[-1] < max_maturity:
+            nb_diff = step_months[-1] - step_months[-2] if len(step_months) > 1 else step_months[-1]
+            step_months = np.append(step_months, step_months[-1] + nb_diff)
+        self.data.step_months = step_months
 # ----------------------------------------
 # 2. Retail Performing ECL Calculator
 # ----------------------------------------

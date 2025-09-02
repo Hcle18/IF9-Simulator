@@ -8,7 +8,7 @@ from src.core import base_template as tplm
 from src.data import data_loader as dl
 from src.data import data_validator as dv
 from src.templates import template_loader as tpl
-from src.ecl_parameters import time_steps as ts
+from ecl_calculation import time_steps as ts
 
 
 if __name__ == "__main__": 

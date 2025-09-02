@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 import pandas as pd
+import numpy as np
 
 
 # List of supported file type for data loader
@@ -46,8 +47,8 @@ class ECLOperationData:
     data_file_path: str 
     df: pd.DataFrame = None
     template_data: Dict[str, pd.DataFrame] = None
+    step_months: np.ndarray = None
 
-    
 
 # Excel sheets name to be used for importing data, depending on the operation type and status
 TEMPLATE_SHEETS_CONFIG: Dict[Tuple[OperationType, OperationStatus], List[str]] = {
@@ -132,6 +133,20 @@ MAPPING_TIME_STEPS_TEMPLATES_CONFIG: Dict[Tuple[OperationType, OperationStatus],
 
     # Retail S3 configuration
     (OperationType.RETAIL, OperationStatus.DEFAULTED): "F2-Mapping time steps"
+}
+
+PD_SHEET_MAPPING_CONFIG: Dict[Tuple[OperationType, OperationStatus], Dict[str, List[List[str]]]] = {
+    # Non Retail S1+S2 configuration
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): {
+        "F6-PD S1S2 Non Retail": [["IFRS9_PD_MODEL_AFTER_CRM", "RATING_CALCULATION"], ["IFRS9_PD_MODEL_CODE", "RATING"]]
+    }
+}
+
+LGD_SHEET_MAPPING_CONFIG: Dict[Tuple[OperationType, OperationStatus], Dict[str, List[List[str]]]] = {
+    # Non Retail S1+S2 configuration
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): {
+        "F8-LGD S1S2 Non Retail": [["IFRS9_LGD_MODEL_AFTER_CRM"], ["IFRS9_LGD_MODEL_CODE"]]
+    }
 }
 
 
