@@ -43,7 +43,7 @@ class NRS1S2DataValidator(bcls.BaseValidator):
             
             field_mapping = dict(zip(mapping_df['Field_application'], mapping_df['Field_input']))
 
-            logger.info(f"Successfully extracted {len(field_mapping)} field mappings from template")
+            logger.info("Successfully extracted %d field mappings from template", len(field_mapping))
             return field_mapping
             
         except Exception as e:

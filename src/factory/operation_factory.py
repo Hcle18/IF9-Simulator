@@ -59,6 +59,15 @@ class OperationFactory:
     
     def get_time_steps(self):
         self.ecl_calculator.get_time_steps()
+    
+    def get_scenarios(self):
+        self.ecl_calculator.get_scenarios()
+    
+    def get_amortization_type(self):
+        self.ecl_calculator.get_amortization_type()
+
+    def get_discount_factor(self):
+        self.ecl_calculator.get_discount_factor()
 
 
 if __name__ == "__main__":

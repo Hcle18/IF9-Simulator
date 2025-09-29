@@ -61,7 +61,50 @@ class NonRetailS1S2TemplateLoader(tplm.BaseTemplate):
             # Check sheets F4-Histo PD Multi Non Retail, F6-PD S1S2 Non Retail
             if sheet_name in ["F4-Histo PD Multi Non Retail", "F6-PD S1S2 Non Retail"]:
                 pass
-        
+
+            # Validate F5-Segmentation Rules
+            if sheet_name == "F5-Segmentation Rules":
+                allowed_ops = {
+                    "EQ", "NE", "IN", "NOT IN", "LT", "LE", "GT", "GE",
+                    "BETWEEN", "NOT BETWEEN", "STARTS WITH", "ENDS WITH",
+                    "CONTAINS", "NOT CONTAINS", "REGEX", "IS NULL", "IS NOT NULL"
+                }
+                required_cols = cst.TEMPLATE_REQUIRED_FIELDS_CONFIG.get(sheet_name, [])
+                missing = [c for c in required_cols if c not in df.columns]
+                if missing:
+                    errors.append(f"Missing columns in '{sheet_name}': {', '.join(missing)}")
+                else:
+                    # Normalize OPERATOR
+                    ops = df["OPERATOR"].astype(str).str.strip().str.upper()
+                    unknown_ops = sorted(set(ops.unique()) - allowed_ops)
+                    if len(unknown_ops) > 0:
+                        errors.append(f"Unknown operators in '{sheet_name}': {', '.join(unknown_ops)}")
+
+                    # Check duplicates on RULE_ID + DRIVER
+                    if "RULE_ID" in df.columns and "DRIVER" in df.columns:
+                        dup = df.duplicated(subset=["RULE_ID", "DRIVER"], keep=False)
+                        if dup.any():
+                            warnings.append(f"Duplicate DRIVER rows for same RULE_ID detected in '{sheet_name}'.")
+
+                    # PRIORITY must be numeric if present
+                    if "PRIORITY" in df.columns:
+                        non_numeric = pd.to_numeric(df["PRIORITY"], errors='coerce').isna() & df["PRIORITY"].notna()
+                        if non_numeric.any():
+                            errors.append(f"Column 'PRIORITY' in '{sheet_name}' must be numeric.")
+
+            # Validate F5-Segmentation Columns
+            if sheet_name == "F5-Segmentation Columns":
+                if "SEGMENT" not in df.columns:
+                    errors.append("'F5-Segmentation Columns' must contain a 'SEGMENT' column.")
+                else:
+                    driver_cols = [c for c in df.columns if c != "SEGMENT"]
+                    if len(driver_cols) == 0:
+                        warnings.append("'F5-Segmentation Columns' has no driver columns; every row will match all records.")
+                    # At least one non-empty driver per row (soft check)
+                    non_empty_driver = df[driver_cols].apply(lambda r: any(pd.notna(v) and str(v).strip() != "" for v in r), axis=1) if driver_cols else pd.Series([], dtype=bool)
+                    if driver_cols and (~non_empty_driver).any():
+                        warnings.append("Some rows in 'F5-Segmentation Columns' have no driver conditions; they will apply globally by priority.")
+
         return errors, warnings
 
 

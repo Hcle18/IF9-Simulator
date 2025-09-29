@@ -1,25 +1,25 @@
-2025-08-29 22:30:34 - src.utils.logging_config - INFO - logging_config - setup_logging - Logging configuration setup complete
-2025-08-29 22:30:34 - root - INFO - data_loader - get_data_importer - Creating ZipCSVImporter for file: C:\Users\Hong-CuongLE\OneDrive - NEXIALOG\Documents\IFRS9-Simulation\sample\data\sample_non_retail.zip
-2025-08-29 22:30:34 - src.templates.template_loader - INFO - template_loader - get_template_loader - Creating template loader for Non Retail - S1+S2
-2025-08-29 22:30:34 - src.data.data_validator - INFO - data_validator - get_data_validator - Creating data validator for Non Retail - S1+S2
-2025-08-29 22:30:34 - src.ecl_calculation.ecl_calculator - INFO - ecl_calculator - get_ecl_calculator - Creating ECL calculator for Non Retail - S1+S2
-2025-08-29 22:30:35 - src.core.base_template - INFO - base_template - _read_excel_file - Reading Excel templates from file: C:\Users\Hong-CuongLE\OneDrive - NEXIALOG\Documents\IFRS9-Simulation\sample\templates\Template_outil_V1.xlsx
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - _read_excel_file - Successfully read Excel file: C:\Users\Hong-CuongLE\OneDrive - NEXIALOG\Documents\IFRS9-Simulation\sample\templates\Template_outil_V1.xlsx. List of sheet names: F1-Mapping fields Non Retail, F2-Mapping time steps, F3-Mapping Segment SICR, F4-Histo PD Multi Non Retail, F6-PD S1S2 Non Retail, F8-LGD S1S2 Non Retail, F12-CCF Non Retail
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - import_template - Template data updated in ECLOperationData container with 7 sheets
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - validate_template - Validating template for Non Retail S1+S2 operations.
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - _perform_basic_validation - Performing basic validation checks...
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F1-Mapping fields Non Retail
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F2-Mapping time steps
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F3-Mapping Segment SICR
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F4-Histo PD Multi Non Retail
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F6-PD S1S2 Non Retail
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F8-LGD S1S2 Non Retail
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F12-CCF Non Retail
-2025-08-29 22:30:37 - src.templates.template_loader - INFO - template_loader - _perform_specific_validation - Performing specific validation checks...
-2025-08-29 22:30:37 - src.templates.template_loader - INFO - template_loader - _perform_specific_validation - Number of time steps in 'F2-Mapping time steps': 33
-2025-08-29 22:30:37 - src.templates.template_loader - INFO - template_loader - _perform_specific_validation - Number of time steps in 'F6-PD S1S2 Non Retail': 0
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - validate_template - Validation completed for Non Retail S1+S2 operations.
-2025-08-29 22:30:37 - src.core.base_template - INFO - base_template - validate_template - Validation result: Failed
-2025-08-29 22:30:37 - root - INFO - data_loader - load_data - ZIP CSV data loaded successfully from C:\Users\Hong-CuongLE\OneDrive - NEXIALOG\Documents\IFRS9-Simulation\sample\data\sample_non_retail.zip. Shape: (6, 27)
-2025-08-29 22:30:37 - src.core.base_data - INFO - base_data - validate_data - Validating data for Non Retail - S1+S2 operations
-2025-08-29 22:30:37 - src.data.data_validator - INFO - data_validator - validate_data - Successfully validated Non Retail S1+S2 data.
+2025-09-15 22:15:18 - src.utils.logging_config - INFO - logging_config - setup_logging - Logging configuration setup complete
+2025-09-15 22:15:18 - root - INFO - data_loader - get_data_importer - Creating ZipCSVImporter for file: C:\Users\Hong-CuongLE\OneDrive - NEXIALOG\Documents\IFRS9-Simulation\sample\data\sample_non_retail.zip
+2025-09-15 22:15:18 - src.templates.template_loader - INFO - template_loader - get_template_loader - Creating template loader for Non Retail - S1+S2
+2025-09-15 22:15:18 - src.data.data_validator - INFO - data_validator - get_data_validator - Creating data validator for Non Retail - S1+S2
+2025-09-15 22:15:18 - src.ecl_calculation.ecl_calculator - INFO - ecl_calculator - get_ecl_calculator - Creating ECL calculator for Non Retail - S1+S2
+2025-09-15 22:15:18 - src.core.base_template - INFO - base_template - _read_excel_file - Reading Excel templates from file: C:\Users\Hong-CuongLE\OneDrive - NEXIALOG\Documents\IFRS9-Simulation\sample\templates\Template_outil_V1.xlsx
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - _read_excel_file - Successfully read Excel file: C:\Users\Hong-CuongLE\OneDrive - NEXIALOG\Documents\IFRS9-Simulation\sample\templates\Template_outil_V1.xlsx. List of sheet names: F1-Mapping fields Non Retail, F2-Mapping time steps, F3-Mapping Segment SICR, F4-Histo PD Multi Non Retail, F6-PD S1S2 Non Retail, F8-LGD S1S2 Non Retail, F12-CCF Non Retail
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - import_template - Template data updated in ECLOperationData container with 7 sheets
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - validate_template - Validating template for Non Retail S1+S2 operations.
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - _perform_basic_validation - Performing basic validation checks...
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F1-Mapping fields Non Retail
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F2-Mapping time steps
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F3-Mapping Segment SICR
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F4-Histo PD Multi Non Retail
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F6-PD S1S2 Non Retail
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F8-LGD S1S2 Non Retail
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - _perform_basic_validation - Validating sheet: F12-CCF Non Retail
+2025-09-15 22:15:19 - src.templates.template_loader - INFO - template_loader - _perform_specific_validation - Performing specific validation checks...
+2025-09-15 22:15:19 - src.templates.template_loader - INFO - template_loader - _perform_specific_validation - Number of time steps in 'F2-Mapping time steps': 33
+2025-09-15 22:15:19 - src.templates.template_loader - INFO - template_loader - _perform_specific_validation - Number of time steps in 'F6-PD S1S2 Non Retail': 0
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - validate_template - Validation completed for Non Retail S1+S2 operations.
+2025-09-15 22:15:19 - src.core.base_template - INFO - base_template - validate_template - Validation result: Failed
+2025-09-15 22:15:19 - root - INFO - data_loader - load_data - ZIP CSV data loaded successfully from C:\Users\Hong-CuongLE\OneDrive - NEXIALOG\Documents\IFRS9-Simulation\sample\data\sample_non_retail.zip. Shape: (6, 27)
+2025-09-15 22:15:19 - src.core.base_data - INFO - base_data - validate_data - Validating data for Non Retail - S1+S2 operations
+2025-09-15 22:15:19 - src.data.data_validator - INFO - data_validator - validate_data - Successfully validated Non Retail S1+S2 data.

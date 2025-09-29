@@ -48,6 +48,8 @@ class ECLOperationData:
     df: pd.DataFrame = None
     template_data: Dict[str, pd.DataFrame] = None
     step_months: np.ndarray = None
+    list_scenarios: List[str] = None
+    scenario_weights: Dict[str, float] = None
 
 
 # Excel sheets name to be used for importing data, depending on the operation type and status
@@ -71,6 +73,8 @@ TEMPLATE_SHEETS_CONFIG: Dict[Tuple[OperationType, OperationStatus], List[str]] =
         "F2-Mapping time steps",
         "F3-Mapping Segment SICR",
         "F4-Histo PD Multi Non Retail",
+        "F5-Segmentation Rules",
+        "F5-Segmentation Columns",
         "F6-PD S1S2 Non Retail",
         "F8-LGD S1S2 Non Retail",
         "F12-CCF Non Retail"
@@ -84,6 +88,8 @@ SHEET_START_ROW_CONFIG: Dict[str, int] = {
     "F2-Mapping time steps": 3,         # Start from row 4
     "F3-Mapping Segment SICR": 3,       # Start from row 4
     "F4-Histo PD Multi Non Retail": 4,  # Start from row 5
+    "F5-Segmentation Rules": 4,         # Start from row 5
+    "F5-Segmentation Columns": 4,       # Start from row 5
     "F6-PD S1S2 Non Retail": 4,         # Start from row 5
     "F8-LGD S1S2 Non Retail": 4,        # Start from row 5
     "F12-CCF Non Retail": 4,            # Start from row 5
@@ -103,6 +109,8 @@ TEMPLATE_REQUIRED_FIELDS_CONFIG: Dict[str, List[str]] = {
     "F2-Mapping time steps": ["NB_MONTHS"],
     "F3-Mapping Segment SICR": ["SEGMENT_REPORTING", "SEGMENT_ORIGINATION"],
     "F4-Histo PD Multi Non Retail": ["START_DATE_VALIDITY", "END_DATE_VALIDITY", "SEGMENT", "RATING"],
+    "F5-Segmentation Rules": ["RULE_ID", "DRIVER", "OPERATOR", "VALUE", "SEGMENT"],
+    "F5-Segmentation Columns": ["SEGMENT"],
     "F6-PD S1S2 Non Retail": ["SEGMENT", "SCENARIO", "RATING"],
     "F8-LGD S1S2 Non Retail": ["IFRS9_MODEL_CODE", "SCENARIO"],
     "F12-CCF Non Retail": ["IFRS9_MODEL_CODE", "SCENARIO"],
@@ -149,6 +157,12 @@ LGD_SHEET_MAPPING_CONFIG: Dict[Tuple[OperationType, OperationStatus], Dict[str, 
     }
 }
 
+CCF_SHEET_MAPPING_CONFIG: Dict[Tuple[OperationType, OperationStatus], Dict[str, List[List[str]]]] = {
+    # Non Retail S1+S2 configuration
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): {
+        "F12-CCF Non Retail": [["CCF_MODEL"], ["IFRS9_CCF_MODEL_CODE"]]
+    }
+}
 
 # Configuration for data loading per operation type and operation status
 DATA_LOADER_CONFIG: Dict[Tuple[OperationType, OperationStatus], Dict[str, str]] = {
