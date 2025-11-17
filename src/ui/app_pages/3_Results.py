@@ -13,19 +13,18 @@ from io import BytesIO
 
 # Add parent directory to path
 parent_dir = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(parent_dir))
-
-# Add utils to path
-utils_dir = Path(__file__).parent.parent / "utils"
-sys.path.insert(0, str(utils_dir))
-
-import ui_components as ui
+from src.ui.utils import ui_components as ui
+from src.ui.utils.session_persistence import load_session_state, save_session_state
+from src.ui.utils.init_session_state import init_session_state
 
 st.set_page_config(
     page_title="Results Analysis",
     page_icon="📊",
     layout="wide"
 )
+
+# Initialize session state with default values
+init_session_state()
 
 # Custom CSS
 st.markdown(ui.get_custom_css(), unsafe_allow_html=True)

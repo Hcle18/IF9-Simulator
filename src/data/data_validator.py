@@ -20,9 +20,27 @@ class NRS1S2DataValidator(bcls.BaseValidator):
     '''
 
     def validate_data(self):
-        super().validate_data()
-        logger.info("Successfully validated Non Retail S1+S2 data.")
-        pass
+        # Custom validation logic for Non Retail S1+S2
+        logger.info(f"Starting data validation for {self.data.operation_type.value} {self.data.operation_status.value} operations.")
+        errors = []
+        warnings = []
+        
+        # Check required fields
+        required_fields = ["PROVISIONING_BASIS", "ECL_RUN_ID"]
+        missing_fields = [field for field in required_fields if field not in self.data.df.columns]
+        if missing_fields:
+            errors.append(f"Missing required fields: {', '.join(missing_fields)}")
+
+        # Check whether Number of ECL_RUN_ID is consistent with number of Jarvis files
+        if self.data.list_jarvis_file_paths:
+            unique_ecl_run_ids = self.data.df["ECL_RUN_ID"].nunique()
+            if unique_ecl_run_ids != len(self.data.list_jarvis_file_paths):
+                errors.append(f"Number of unique ECL_RUN_ID ({unique_ecl_run_ids}) does not match number of Jarvis files ({len(self.data.list_jarvis_file_paths)})")
+
+        self.data.data_validation_results = cst.DataValidationResult(
+            errors=errors,
+            warnings=warnings
+        )
 
 # ========================================
 # Data Validator Factory

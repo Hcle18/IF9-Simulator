@@ -3,20 +3,19 @@ Simulation Configuration Page
 Create and configure ECL simulations
 """
 
+import os
 import streamlit as st
-import sys
 from pathlib import Path
 
-# Add parent directory to path
-parent_dir = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(parent_dir))
-
-# Add utils to path
-utils_dir = Path(__file__).parent.parent / "utils"
-sys.path.insert(0, str(utils_dir))
 
 from src.core import config as cst
-import ui_components as ui
+from src.ui.utils import ui_components as ui
+from src.ui.utils.session_persistence import save_session_state
+from src.ui.utils.get_directories import get_subdirectories, format_dir_path, get_files_in_directory
+from src.ui.utils.init_session_state import init_session_state
+
+# parent_dir = Path(__file__).parent.parent.parent
+parent_dir = Path(__file__).parent.parent.parent.parent
 
 st.set_page_config(
     page_title="Simulation Configuration",
@@ -35,12 +34,9 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if "simulations_config" not in st.session_state:
-    st.session_state.simulations_config = []
 
-if "show_context_form" not in st.session_state:
-    st.session_state.show_context_form = False
+# Initialize session state with default values
+init_session_state()
 
 # Main container
 col_left, col_right = st.columns([1, 2])
@@ -48,58 +44,162 @@ col_left, col_right = st.columns([1, 2])
 with col_left:
     st.markdown("### 📋 Simulations Overview")
     
+    # Show current simulation being created (if any contexts exist)
+    if len(st.session_state.current_contexts) > 0 and not st.session_state.get('simulation_submitted', False):
+        with st.expander("🆕 **Current Simulation (In Progress)**", expanded=True):
+            st.warning("⚠️ This simulation is being created. Click 'Submit Simulation' to finalize.")
+            st.write(f"**Contexts Added:** {len(st.session_state.current_contexts)}")
+            
+            # Display each context
+            for i, ctx in enumerate(st.session_state.current_contexts):
+                st.markdown(f"**Context {i+1}:** {ctx.get('context_name', 'N/A')}")
+                data_file = ctx.get('data_file', None)
+                template_file = ctx.get('template_file', None)
+                jarvis_files = ctx.get('jarvis_files', [])
+                
+                data_file_name = data_file.name if hasattr(data_file, 'name') else Path(data_file).name if data_file else 'N/A'
+                template_file_name = template_file.name if hasattr(template_file, 'name') else Path(template_file).name if template_file else 'N/A'
+                
+                st.write(f"    - Data File: {data_file_name}")
+                st.write(f"    - Template File: {template_file_name}")
+                if jarvis_files:
+                    st.write(f"    - Jarvis Files: {len(jarvis_files)} file(s)")
+            
+            st.markdown("---")
+    
+    # Show completed simulations
     if len(st.session_state.simulations_config) == 0:
-        st.info("No simulations created yet. Click 'Create New Simulation' to start.")
-    else:
+        st.empty()
         for idx, sim in enumerate(st.session_state.simulations_config):
             with st.expander(f"🔹 {sim['simulation_name']}", expanded=False):
                 st.write(f"**Type:** {sim['operation_type'].value}")
                 st.write(f"**Status:** {sim['operation_status'].value}")
-                st.write(f"**Contexts:** {len(sim['contexts'])}")
+                # Lister tous les contextes: Context name + data file name + template file name + jarvis files count
+                for i, ctx in enumerate(sim.get('contexts', [])):
+                    st.markdown(f"**Context {i+1}:** {ctx.get('context_name', 'N/A')}")
+                    data_file = ctx.get('data_file', None)
+                    template_file = ctx.get('template_file', None)
+                    jarvis_files = ctx.get('jarvis_files', [])
+                    
+                    data_file_name = data_file.name if hasattr(data_file, 'name') else Path(data_file).name if data_file else 'N/A'
+                    template_file_name = template_file.name if hasattr(template_file, 'name') else Path(template_file).name if template_file else 'N/A'
+                    
+                    st.write(f"    - Data File: {data_file_name}")
+                    st.write(f"    - Template File: {template_file_name}")
+                    if jarvis_files:
+                        st.write(f"    - Jarvis Files: {len(jarvis_files)} file(s)")
+                
                 
                 if st.button(f"🗑️ Delete", key=f"delete_{idx}"):
                     st.session_state.simulations_config.pop(idx)
                     st.rerun()
 
 with col_right:
-    st.markdown("### ➕ Create New Simulation")
+    # Header with Submit button
+    col_title, col_submit_btn = st.columns([2, 1])
     
-    # Step 1: Simulation Name
-    st.markdown("#### Step 1: Simulation Information")
+    with col_title:
+        st.markdown("### :material/add_circle_outline: Create New Simulation")
     
-    sim_name = st.text_input(
-        "Simulation Name *",
-        placeholder="e.g., Baseline_Scenario_2024",
-        help="Unique identifier for this simulation"
-    )
+    with col_submit_btn:
+        # Show Submit button only if simulation is not yet submitted
+        if not st.session_state.get('simulation_submitted', False):
+            # Disable button if no contexts are added or if required fields are missing
+            has_contexts = len(st.session_state.current_contexts) > 0
+            
+            # Store sim_name, operation_type, operation_status for validation
+            # These will be defined later in the form
+            if st.button(
+                "📤 Submit", 
+                type="primary", 
+                use_container_width=True,
+                disabled=not has_contexts,
+                key="submit_btn_top",
+                help="Add at least one context to submit" if not has_contexts else "Submit simulation and load data"
+            ):
+                st.session_state.trigger_submit = True
+                st.rerun()
     
-    col_type, col_status = st.columns(2)
+    # Check if simulation has been submitted
+    if st.session_state.get('simulation_submitted', False):
+        st.success("✅ Simulation submitted successfully! The form is now locked to prevent accidental modifications.")
+        st.info("💡 To create a new simulation, please refresh the page or click the 'Reset' button below.")
+        
+        if st.button("🔄 Create New Simulation", type="primary", use_container_width=True):
+            st.session_state.simulation_submitted = False
+            st.session_state.current_contexts = []
+            st.session_state.show_context_form = False
+            st.session_state.form_sim_name = ""
+            st.session_state.form_operation_type = cst.OperationType.RETAIL
+            st.session_state.form_operation_status = cst.OperationStatus.PERFORMING
+            st.rerun()
+        
+        st.markdown("---")
     
-    with col_type:
-        operation_type = st.selectbox(
-            "Operation Type *",
-            options=[t for t in cst.OperationType],
-            format_func=lambda x: x.value
+    # Initialize trigger_submit if not exists
+    if "trigger_submit" not in st.session_state:
+        st.session_state.trigger_submit = False
+    
+    # Step 1: Simulation Name - Only show if not submitted
+    if not st.session_state.get('simulation_submitted', False):
+        st.markdown("#### Step 1: Simulation Information")
+        
+        # Initialize form values in session state if not exists
+        if 'form_sim_name' not in st.session_state:
+            st.session_state.form_sim_name = ""
+        if 'form_operation_type' not in st.session_state:
+            st.session_state.form_operation_type = cst.OperationType.RETAIL
+        if 'form_operation_status' not in st.session_state:
+            st.session_state.form_operation_status = cst.OperationStatus.PERFORMING
+        
+        sim_name = st.text_input(
+            "Simulation Name *",
+            placeholder="e.g., Baseline_Scenario_2024",
+            help="Unique identifier for this simulation",
+            value=st.session_state.form_sim_name,
+            key="sim_name_input"
         )
-    
-    with col_status:
-        operation_status = st.selectbox(
-            "Operation Status *",
-            options=[s for s in cst.OperationStatus],
-            format_func=lambda x: x.value
-        )
-    
-    st.markdown("---")
-    
-    # Step 2: Contexts
-    st.markdown("#### Step 2: Add Contexts")
+        # Update session state with current value
+        st.session_state.form_sim_name = sim_name
+        
+        col_type, col_status = st.columns(2)
+        
+        with col_type:
+            operation_type = st.selectbox(
+                "Operation Type *",
+                options=[t for t in cst.OperationType],
+                format_func=lambda x: x.value,
+                index=[t for t in cst.OperationType].index(st.session_state.form_operation_type)
+            )
+            # Update session state with current value
+            st.session_state.form_operation_type = operation_type
+        
+        with col_status:
+            operation_status = st.selectbox(
+                "Operation Status *",
+                options=[s for s in cst.OperationStatus],
+                format_func=lambda x: x.value,
+                index=[s for s in cst.OperationStatus].index(st.session_state.form_operation_status)
+            )
+            # Update session state with current value
+            st.session_state.form_operation_status = operation_status
+        
+        st.markdown("---")
+        
+        # Step 2: Contexts
+        st.markdown("#### Step 2: Add Contexts")
+    else:
+        # Use stored values from session state
+        sim_name = st.session_state.get('form_sim_name', None)
+        operation_type = st.session_state.get('form_operation_type', None)
+        operation_status = st.session_state.get('form_operation_status', None)
     
     # Initialize contexts list for current simulation
     if "current_contexts" not in st.session_state:
         st.session_state.current_contexts = []
     
-    # Display existing contexts
-    if len(st.session_state.current_contexts) > 0:
+    # Display existing contexts - Only allow removal if not submitted
+    if len(st.session_state.current_contexts) > 0 and not st.session_state.get('simulation_submitted', False):
         st.markdown("**Current Contexts:**")
         for idx, ctx in enumerate(st.session_state.current_contexts):
             col_ctx1, col_ctx2 = st.columns([4, 1])
@@ -111,14 +211,14 @@ with col_right:
                     st.session_state.current_contexts.pop(idx)
                     st.rerun()
     
-    # Toggle form - Hide button when form is open
-    if not st.session_state.show_context_form:
+    # Toggle form - Hide button when form is open or when simulation is submitted
+    if not st.session_state.show_context_form and not st.session_state.get('simulation_submitted', False):
         if st.button("➕ Add Context", type="primary"):
             st.session_state.show_context_form = True
             st.rerun()
     
-    # Context form
-    if st.session_state.show_context_form:
+    # Context form - Only show if simulation is not submitted
+    if st.session_state.show_context_form and not st.session_state.get('simulation_submitted', False):
         # Initialize session state for selected files
         if "selected_data_file" not in st.session_state:
             st.session_state.selected_data_file = None
@@ -128,59 +228,7 @@ with col_right:
             st.session_state.selected_jarvis_files = []
         
         # File selection section (OUTSIDE form)
-        #st.markdown("##### 📂 Select Files")
-        
-        # Helper function to get directories and files
-        def get_subdirectories(base_path):
-            """Get all subdirectories from a base path with relative paths"""
-            try:
-                path = Path(base_path)
-                if not path.exists():
-                    return []
-                
-                # Folders to exclude
-                exclude_folders = {'__pycache__', '.git', '.vscode', '.idea',
-                                   'node_modules', '.pytest_cache', '__MACOSX',
-                                   '.venv'}
-                
-                dirs = [str(base_path)]  # Include base path itself
-                for item in path.rglob("*"):
-                    if item.is_dir():
-                        # Skip if any part of the path is in exclude list
-                        if not any(excluded in item.parts for excluded in exclude_folders):
-                            dirs.append(str(item))
-                return sorted(dirs)
-            except Exception:
-                return [str(base_path)]
-        
-        def format_dir_path(dir_path, base_path):
-            """Format directory path to show hierarchy"""
-            try:
-                rel_path = Path(dir_path).relative_to(Path(base_path))
-                if str(rel_path) == ".":
-                    return f"📂 {Path(base_path).name}"
-                else:
-                    # Show relative path with hierarchy
-                    return f"📂 {Path(base_path).name}/{rel_path}"
-            except ValueError:
-                # If not relative, just show the name
-                return f"📂 {Path(dir_path).name}"
-        
-        def get_files_in_directory(directory, extensions=None):
-            """Get all files in a directory with optional extension filter"""
-            try:
-                path = Path(directory)
-                if not path.exists() or not path.is_dir():
-                    return []
-                files = []
-                for item in path.iterdir():
-                    if item.is_file():
-                        if extensions is None or item.suffix.lower() in extensions:
-                            files.append(str(item))
-                return sorted(files)
-            except Exception:
-                return []
-        
+      
         # Data File Selection
         col1, col2 = st.columns(2)
         
@@ -210,7 +258,7 @@ with col_right:
                 )
                 
                 # Get CSV files in selected directory
-                data_files = get_files_in_directory(selected_data_dir, extensions=['.csv', '.xlsx', '.xls'])
+                data_files = get_files_in_directory(selected_data_dir, extensions=['.csv', '.xlsx', '.xls', '.zip'])
                 
                 if data_files:
                     selected_data_file = st.selectbox(
@@ -228,7 +276,7 @@ with col_right:
             else:  # Upload mode
                 uploaded_data_file = st.file_uploader(
                     "Upload data file:",
-                    type=['csv', 'xlsx', 'xls'],
+                    type=['csv', 'xlsx', 'xls', 'zip'],
                     key="data_file_uploader"
                 )
                 
@@ -263,8 +311,8 @@ with col_right:
                     key="template_folder_select"
                 )
                 
-                # Get Excel/YAML files in selected directory
-                template_files = get_files_in_directory(selected_template_dir, extensions=['.xlsx', '.xls', '.yaml', '.yml'])
+                # Get Excel files in selected directory
+                template_files = get_files_in_directory(selected_template_dir, extensions=['.xlsx', '.xls'])
                 
                 if template_files:
                     selected_template_file = st.selectbox(
@@ -282,7 +330,7 @@ with col_right:
             else:  # Upload mode
                 uploaded_template_file = st.file_uploader(
                     "Upload template file:",
-                    type=['xlsx', 'xls', 'yaml', 'yml'],
+                    type=['xlsx', 'xls'],
                     key="template_file_uploader"
                 )
                 
@@ -294,7 +342,7 @@ with col_right:
         
         # Jarvis files selection - Only for Non Retail
         if operation_type == cst.OperationType.NON_RETAIL:
-            st.markdown("**📊 Jarvis Files (Optional)**")
+            st.markdown("**📊 Jarvis Files**")
             
             # Radio button to choose between folder selection and upload
             jarvis_mode = st.radio(
@@ -320,7 +368,7 @@ with col_right:
                     )
                 
                 with col_jarvis2:
-                    jarvis_files = get_files_in_directory(selected_jarvis_dir, extensions=['.csv', '.xlsx', '.xls'])
+                    jarvis_files = get_files_in_directory(selected_jarvis_dir, extensions=['.zip'])
                     
                     if jarvis_files:
                         selected_jarvis_file = st.selectbox(
@@ -341,7 +389,7 @@ with col_right:
             else:  # Upload mode
                 uploaded_jarvis_files = st.file_uploader(
                     "Upload Jarvis file(s):",
-                    type=['csv', 'xlsx', 'xls'],
+                    type=['zip'],
                     accept_multiple_files=True,
                     key="jarvis_file_uploader"
                 )
@@ -451,38 +499,75 @@ with col_right:
     
     st.markdown("---")
     
-    # Step 3: Submit Simulation
-    st.markdown("#### Step 3: Submit Simulation")
+    # Process submit when triggered from top button
+    if st.session_state.get('trigger_submit', False):
+        st.session_state.trigger_submit = False
+        
+        # Validation
+        if not sim_name:
+            st.error("❌ Simulation name is required!")
+        elif len(st.session_state.current_contexts) == 0:
+            st.error("❌ At least one context is required!")
+        else:
+            # Add simulation to config
+            simulation_config = {
+                "simulation_name": sim_name,
+                "operation_type": operation_type,
+                "operation_status": operation_status,
+                "contexts": st.session_state.current_contexts.copy()
+            }
+            
+            st.session_state.simulations_config.append(simulation_config)
+            
+            # Mark simulation as submitted to lock the form
+            st.session_state.simulation_submitted = True
+            st.session_state.show_context_form = False
+            
+            st.success(f"✅ Simulation '{sim_name}' created successfully!")
+            
+            # Automatically load and validate data
+            with st.spinner("🔄 Loading and validating data..."):
+                try:
+                    # Add simulation to manager
+                    for ctx in simulation_config["contexts"]:
+                        context_name = ctx.get("context_name", f"{simulation_config['simulation_name']}_context_{simulation_config['contexts'].index(ctx)}")
+                        
+                        st.session_state.manager.add_simulation(
+                            simulation_name=context_name,
+                            operation_type=simulation_config["operation_type"],
+                            operation_status=simulation_config["operation_status"],
+                            data_path=ctx["data_file"],
+                            template_path=ctx["template_file"],
+                            list_jarvis_file_path=ctx["jarvis_files"] if ctx["jarvis_files"] else None,
+                        )
+                    
+                    # Prepare simulations
+                    st.session_state.manager.prepare_all_simulations()
+                    st.session_state.validation_complete = True
+                    
+                    # Save session state to persist across page refreshes
+                    save_session_state(['simulations_config', 'current_contexts', 'validation_complete', 'calculation_complete', 'simulation_submitted', 'manager'])
+                    
+                    st.success("✅ Data loaded and validated successfully!")
+                    st.info("👉 Go to Validation page to review data quality")
+                    st.balloons()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error during loading and validation: {str(e)}")
+                    # Rollback: remove the simulation if loading failed
+                    st.session_state.simulations_config.pop()
+                    st.session_state.simulation_submitted = False
+            
+            st.rerun()
     
-    col_submit1, col_submit2 = st.columns([3, 1])
-    
-    with col_submit1:
-        if st.button("📤 Submit Simulation", type="primary", use_container_width=True):
-            # Validation
-            if not sim_name:
-                st.error("❌ Simulation name is required!")
-            elif len(st.session_state.current_contexts) == 0:
-                st.error("❌ At least one context is required!")
-            else:
-                # Add simulation to config
-                simulation_config = {
-                    "simulation_name": sim_name,
-                    "operation_type": operation_type,
-                    "operation_status": operation_status,
-                    "contexts": st.session_state.current_contexts.copy()
-                }
-                
-                st.session_state.simulations_config.append(simulation_config)
-                st.session_state.current_contexts = []
-                st.session_state.show_context_form = False
-                
-                st.success(f"✅ Simulation '{sim_name}' created successfully!")
-                st.balloons()
-    
-    with col_submit2:
-        if st.button("🔄 Reset", use_container_width=True):
+    # Reset button - Show only if not submitted
+    if not st.session_state.get('simulation_submitted', False):
+        if st.button("🔄 Reset All", use_container_width=True, key="reset_btn_bottom"):
             st.session_state.current_contexts = []
             st.session_state.show_context_form = False
+            st.session_state.form_sim_name = ""
+            st.session_state.form_operation_type = cst.OperationType.RETAIL
+            st.session_state.form_operation_status = cst.OperationStatus.PERFORMING
             st.rerun()
 
 # Footer section
@@ -491,7 +576,7 @@ st.markdown("---")
 if len(st.session_state.simulations_config) > 0:
     st.markdown("### 🚀 Ready to Process?")
     
-    col_action1, col_action2, col_action3 = st.columns([2, 2, 1])
+    col_action1, col_action2 = st.columns([3, 1])
     
     with col_action1:
         st.metric(
@@ -501,36 +586,8 @@ if len(st.session_state.simulations_config) > 0:
         )
     
     with col_action2:
-        if st.button("🎬 Load & Validate Data", type="primary", use_container_width=True):
-            # Add simulations to manager
-            with st.spinner("Loading simulations..."):
-                try:
-                    for sim_config in st.session_state.simulations_config:
-                        for ctx in sim_config["contexts"]:
-                            # Use the context's own name instead of generating one
-                            context_name = ctx.get("context_name", f"{sim_config['simulation_name']}_context_{sim_config['contexts'].index(ctx)}")
-                            
-                            st.session_state.manager.add_simulation(
-                                simulation_name=context_name,
-                                operation_type=sim_config["operation_type"],
-                                operation_status=sim_config["operation_status"],
-                                data_file_path=ctx["data_file"],
-                                template_file_path=ctx["template_file"],
-                                list_jarvis_file_path=ctx["jarvis_files"] if ctx["jarvis_files"] else None,
-                                data_identifier=ctx["data_identifier"]
-                            )
-                    
-                    # Prepare simulations
-                    st.session_state.manager.prepare_all_simulations()
-                    st.session_state.validation_complete = True
-                    
-                    st.success("✅ All simulations loaded and validated!")
-                    st.info("👉 Go to Validation page to review data quality")
-                    
-                except Exception as e:
-                    st.error(f"❌ Error during loading: {str(e)}")
-    
-    with col_action3:
         if st.session_state.validation_complete:
-            if st.button("➡️ Validation", use_container_width=True):
+            if st.button("➡️ Validation", type="primary", use_container_width=True):
                 st.switch_page("pages/2_✅_Validation.py")
+        else:
+            st.info("Submit a simulation to proceed")

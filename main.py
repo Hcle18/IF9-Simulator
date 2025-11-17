@@ -1,45 +1,67 @@
-# Global import
-from src.core.librairies import *
+import streamlit as st
+import os
+import pandas as pd
 
-# Local import
-from src.core import config as cst
-from src.core import base_data as bcls
-from src.core import base_template as tplm
-from src.data import data_loader as dl
-from src.data import data_validator as dv
-from src.templates import template_loader as tpl
-from ecl_calculation import time_steps as ts
+# st.title("📁 Multi-level Folder Browser")
+
+# --- Set base directory (server-side) ---
+BASE_DIR = os.path.abspath(".")  # Start from the project root
+
+# Keep track of current path using Streamlit session state
+if "current_path" not in st.session_state:
+    st.session_state.current_path = BASE_DIR
 
 
-if __name__ == "__main__": 
-    operation_type = cst.OperationType.NON_RETAIL
-    operation_status = cst.OperationStatus.PERFORMING
+def go_to_folder(subfolder):
+    """Navigate into a subfolder."""
+    st.session_state.current_path = os.path.join(st.session_state.current_path, subfolder)
+    st.rerun()
 
-    # Simulation data
-    file_name = "sample_non_retail.zip"
-    file_path = os.path.join("sample", "data", file_name)
 
-    importer = dl.get_importer(file_path, operation_type, operation_status)
-    #print(importer)
+def go_up():
+    """Navigate one level up."""
+    if st.session_state.current_path != BASE_DIR:
+        st.session_state.current_path = os.path.dirname(st.session_state.current_path)
+        st.rerun()
 
-    # Templates
-    template_path = r".\sample\templates\Template_outil_V1.xlsx"
-    template_loader = tpl.template_loader(operation_type, operation_status, template_path)
-    #print(template_loader.required_sheets)
+def go_to_root():
+    """Navigate to root."""
+    if st.session_state.current_path != BASE_DIR:
+        st.session_state.current_path = BASE_DIR
+        st.rerun()
 
-    # Importing & validating templates
-    NR_template_data = template_loader.template_importer()
-    print(NR_template_data)
-    template_validation = template_loader.validate_template(NR_template_data)
 
-    # Data loader
-    operation_nr_data = dl.data_loader(importer)
-    print(f"Operation NR Data Columns: {operation_nr_data.data.columns}")
-    # Data validation
-    NR_data_validator = dv.NRS1S2DataValidator(operation_nr_data, NR_template_data)
-    df_mapped = NR_data_validator.mapping_fields()
-    print(f"After mapping Data Columns: {df_mapped.columns}")
+# --- Display current path ---
+st.write(f"📂 **Current directory:** `{st.session_state.current_path}`")
 
-    # Calculate maturity
-    df_mapped['RESIDUAL_MATURITY_MONTHS'] = df_mapped.apply(lambda x: ts.maturity(x['EXPOSURE_END_DATE'], x['AS_OF_DATE']), axis=1)
-    
+# --- Get directories and files ---
+try:
+    items = os.listdir(st.session_state.current_path)
+except FileNotFoundError:
+    st.error("Folder not found.")
+    st.stop()
+
+dirs = [d for d in items if os.path.isdir(os.path.join(st.session_state.current_path, d))]
+files = [f for f in items if os.path.isfile(os.path.join(st.session_state.current_path, f))]
+
+# --- Navigation buttons ---
+col1, col2 = st.columns([2, 1])
+with col1:
+    if st.button("🏠 Go to Root"):
+        go_to_root()
+    if st.button("⬆️ Go Up"):
+        go_up()
+
+# --- Folder navigation ---
+st.subheader("📁 Folders")
+for d in dirs:
+    if st.button(f"📂 {d}"):
+        go_to_folder(d)
+
+# --- File selection ---
+st.subheader("📄 Files")
+selected_file = st.selectbox("Select a file", files)
+
+if selected_file:
+    file_path = os.path.join(st.session_state.current_path, selected_file)
+    st.write(f"**Selected file:** `{file_path}`")

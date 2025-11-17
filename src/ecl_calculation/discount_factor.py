@@ -34,13 +34,19 @@ def discount_factor_quarterly(df, annual_rate_col, step_months):
             df.loc[:, f"DF_{i}"] = 1/(1 + annual_rate/4) ** (n_quarters/4)
     return df
 
-
-def apply_discount_factor(df, as_of_date_col, exposure_end_date_col, annual_rate_col, step_months, discount_map:Dict=None):
+def apply_discount_factor(df, as_of_date_col, exposure_end_date_col, annual_rate_col, 
+                          step_months, discount_map:Dict=None, default_discount_func=None) -> pd.DataFrame:
+    # Default discount map if not specified
     if discount_map is None:
         discount_map = {
             'OFF_BALANCE': discount_factor,
             'ON_BALANCE_LINEAR': discount_factor_quarterly
         }
+    
+    # Default discount function if not specified
+    if default_discount_func is None:
+        default_discount_func = discount_factor
+
     result_dfs = []
     for amort_type, discount_func in discount_map.items():
         mask = df['AMORTIZATION_TYPE'] == amort_type

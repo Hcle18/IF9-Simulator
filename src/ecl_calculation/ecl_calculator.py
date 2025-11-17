@@ -1,12 +1,12 @@
-from src.ecl_calculation.discount_factor import discount_factor, discount_factor_quarterly
-from src.core.librairies import *
 
+from src.core.librairies import *
 from src.core import config as cst
 from src.core import base_ecl_calculator as bcalc
 
 from src.ecl_calculation.time_steps import maturity, nb_time_steps
-from src.ecl_calculation.get_terms import get_list_scenarios, get_terms_from_template, extend_terms_columns, fill_terms_for_lgd_ccf
-from src.utils.get_matrix import get_matrix_prefix
+from src.ecl_calculation.get_terms import get_terms_from_template, extend_terms_columns, fill_terms_param, pd_interpolation, get_max_maturity_lgd
+from src.ecl_calculation.amortization_ead import constant_amortization, infine_ead, off_balance_ead, linear_ead_amortization, apply_ead_amortization
+from src.ecl_calculation.discount_factor import discount_factor, discount_factor_quarterly, apply_discount_factor
 
 logger = logging.getLogger(__name__)  
 
@@ -24,10 +24,15 @@ class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
         Get the number of time steps and maturity from the template data.
         '''
 
+        if self.data.df is None or self.data.df.empty:
+            logger.error("DataFrame is empty. Cannot compute time steps.")
+            raise ValueError("DataFrame is empty. Cannot compute time steps.")
+ 
         # Get the data for mapping template
         template_name = cst.MAPPING_TIME_STEPS_TEMPLATES_CONFIG.get((self.data.operation_type, self.data.operation_status))
 
-        template_df = self.data.template_data.get(template_name)
+        if self.data.template_data is not None:
+            template_df = self.data.template_data.get(template_name)
 
         # Residual maturity in months
         self.data.df["RESIDUAL_MATURITY_MONTHS"] =  maturity(self.data.df['EXPOSURE_END_DATE'], self.data.df['AS_OF_DATE'])
@@ -44,94 +49,180 @@ class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
         while step_months[-1] < max_maturity:
             nb_diff = step_months[-1] - step_months[-2] if len(step_months) > 1 else step_months[-1]
             step_months = np.append(step_months, step_months[-1] + nb_diff)
+        # Update mapping time steps in data container
         self.data.step_months = step_months
 
+    def get_scenarios(self):
+        '''
+        Get the list of scenarios for ECL calculation.
+        Inherited from BaseECLCalculator.
+        '''
+        return super().get_scenarios()
+    
+    def apply_segmentation_by_rules(self):
+        '''
+        Apply segmentation rules to the DataFrame.
+        Inherited from BaseECLCalculator.
+        '''
+        return super().apply_segmentation_by_rules()
+    
     def get_amortization_type(self):
 
-        df = self.data.df
+        # Get EAD from Jarvis results
+        # if self.data.list_jarvis_file_paths:
+        #     results_ead_jarvis = []
+        #     for jarvis_file in self.data.list_jarvis_file_paths:
+        #         logger.info(f"Loading EAD from Jarvis file: {jarvis_file}")
+        #         ead_jarvis = get_ead_jarvis(i, "timeBuckets.json")
+        #         results_ead_jarvis.append(ead_jarvis)
+        #         del ead_jarvis
+        #         gc.collect()
+        #     jarvis_ead_df = pd.concat(results_ead_jarvis, axis=0).sort_index()
+        #     del results_ead_jarvis
+        #     gc.collect()
 
+        #     if jarvis_ead_df is not None and not jarvis_ead_df.empty:
+        #         self.data.df = self.data.df.merge(jarvis_ead_df, how='left', left_index=True, right_index=True)
         # Default amortization category
-        df["AMORTIZATION_CATEGORY"] = "ON_BALANCE_LINEAR"
-        
-        if "ACCOUNTING_TYPE" in df.columns:
+        self.data.df["AMORTIZATION_CATEGORY"] = "ON_BALANCE_INFINE"
+
+        if "ACCOUNTING_TYPE" in self.data.df.columns:
             # Off balance sheet items => Off-balance amortization
-            mask = df["ACCOUNTING_TYPE"].astype(str).str.strip().str.upper().isin(["H", "OFF_BALANCE", "OFF-BALANCE", "OFF BALANCE"])
-            df.loc[mask, "AMORTIZATION_CATEGORY"] = "OFF_BALANCE"
-        
+            mask = self.data.df["ACCOUNTING_TYPE"].astype(str).str.strip().str.upper().isin(["H", "OFF_BALANCE", "OFF-BALANCE", "OFF BALANCE"])
+            self.data.df.loc[mask, "AMORTIZATION_CATEGORY"] = "OFF_BALANCE"
+
             # On balance sheet in-fine amortization
-            mask_on_balance = (df["ACCOUNTING_TYPE"].astype(str).str.strip().str.upper().isin(["B", "ON_BALANCE", "ON-BALANCE", "ON BALANCE"]))
-            mask_infine = df["AMORTIZATION_TYPE"].astype(str).str.strip().str.upper().isin(["IN FINE", "I_FINE", "I FINE", "IN_FINE"])
+            mask_on_balance = (self.data.df["ACCOUNTING_TYPE"].astype(str).str.strip().str.upper().isin(["B", "ON_BALANCE", "ON-BALANCE", "ON BALANCE"]))
+            mask_infine = (self.data.df["AMORTIZATION_TYPE"].astype(str).str.strip().str.upper().isin(["IN FINE", "I_FINE", "I FINE", "IN_FINE"]))
             mask = mask_on_balance & mask_infine
-            df.loc[mask, "AMORTIZATION_CATEGORY"] = "ON_BALANCE_INFINE"
+            self.data.df.loc[mask, "AMORTIZATION_CATEGORY"] = "ON_BALANCE_INFINE"
 
             # On balance sheet linear amortization
-            mask_linear = df["AMORTIZATION_TYPE"].astype(str).str.strip().str.upper().isin(["LINEAR", "M-LINEAR"])
+            mask_linear = self.data.df["AMORTIZATION_TYPE"].astype(str).str.strip().str.upper().isin(["LINEAR", "M-LINEAR"])
             mask = mask_on_balance & mask_linear
-            df.loc[mask, "AMORTIZATION_CATEGORY"] = "ON_BALANCE_LINEAR"
-
-        self.data.df = df
-
-    def get_discount_factor(self):
-        
-        discount_map = {
-            "OFF_BALANCE": discount_factor,
-            "ON_BALANCE_INFINE": discount_factor,
-            "ON_BALANCE_LINEAR": discount_factor_quarterly,
-        }
-        df = self.data.df
-        result_dfs = []
-        for amort_type, discount_func in discount_map.items():
-            mask = df["AMORTIZATION_CATEGORY"] == amort_type
-            if mask.any():
-                df_subset = df[mask]
-                if discount_func == discount_factor_quarterly:
-                    params = ("CONTRACTUAL_CLIENT_RATE", self.data.step_months)
-                else:
-                    params = ("AS_OF_DATE", "EXPOSURE_END_DATE", "CONTRACTUAL_CLIENT_RATE", self.data.step_months)
-                df_subset = discount_func(df_subset, *params)
-                result_dfs.append(df_subset)
-        self.data.df = pd.concat(result_dfs, axis=0).sort_index()
+            self.data.df.loc[mask, "AMORTIZATION_CATEGORY"] = "ON_BALANCE_LINEAR"
 
     def calcul_ecl(self):
         key = (self.data.operation_type, self.data.operation_status)
 
+        # NB row initial
+        nb_row_init = self.data.df.shape[0]
+
+        # Discount factor mapping
+        discount_map = {
+            "OFF_BALANCE": discount_factor,
+            "ON_BALANCE_LINEAR": discount_factor,
+            "ON_BALANCE_INFINE": discount_factor
+        }
+        # Amortization mapping
+        amortization_map = {
+            "OFF_BALANCE": off_balance_ead,
+            "ON_BALANCE_INFINE": infine_ead,
+            "ON_BALANCE_LINEAR": linear_ead_amortization
+        }
+
+        # Discount factor calculation
+        logger.info("\n*** Step 0: Calculate Discount Factors ***\n")
+        DF_df = apply_discount_factor(self.data.df, 
+                                      as_of_date_col="AS_OF_DATE", 
+                                      exposure_end_date_col="EXPOSURE_END_DATE",
+                                      annual_rate_col="ANNUAL_DISCOUNT_RATE",
+                                      step_months=self.data.step_months,
+                                      discount_map=discount_map)
+        
         all_steps = len(self.data.step_months)
 
         for scen in self.data.list_scenarios:
-            scen_df = get_terms_from_template(self.data.df, cst.PD_SHEET_MAPPING_CONFIG, key, self.data.template_data, "PD_", scen)
-            scen_df = extend_terms_columns(scen_df, "NB_TIME_STEPS", "PD_")
+
+            logger.info(f"\n\n--------------------Calculating ECL for scenario: {scen} ------------------\n")
+            # PD
+            logger.info("\n*** Step 1: Get PD terms from template ***\n")
+            PD_df = get_terms_from_template(self.data.df, cst.PD_SHEET_MAPPING_CONFIG, key, 
+                                            self.data.template_data, "PD_", scen,
+                                            additional_fields=["AS_OF_DATE", "EXPOSURE_END_DATE"])
+            PD_df = extend_terms_columns(PD_df, "NB_TIME_STEPS", "PD_")
+            PD_df = pd_interpolation(PD_df, self.data.step_months,
+                                     nb_steps_col="NB_TIME_STEPS",
+                                     maturity_col="RESIDUAL_MATURITY_MONTHS",
+                                     method="linear", pd_prefix="PD_")
             
-            scen_df = get_terms_from_template(scen_df, cst.LGD_SHEET_MAPPING_CONFIG, key, self.data.template_data, "LGD_", scen)
-            scen_df = extend_terms_columns(scen_df, "NB_TIME_STEPS", "LGD_")
+            # LGD
+            logger.info("\n*** Step 2: Get LGD terms from template ***\n")
+            LGD_df = get_terms_from_template(self.data.df, cst.LGD_SHEET_MAPPING_CONFIG, key, 
+                                             self.data.template_data, "LGD_", scen,
+                                             additional_fields=["IFRS9_LGD_PERCENTAGE"])
+            LGD_df = extend_terms_columns(LGD_df, "NB_TIME_STEPS", "LGD_")
+            LGD_df = fill_terms_param(LGD_df, self.data.step_months,
+                                      "LGD_WITHOUT_TIME", "IFRS9_LGD_PERCENTAGE", "LGD_")
 
-            scen_df = get_terms_from_template(scen_df, cst.CCF_SHEET_MAPPING_CONFIG, key, self.data.template_data, "CCF_", scen)
-            scen_df = extend_terms_columns(scen_df, "NB_TIME_STEPS", "CCF_")
-
-            scen_df = fill_terms_for_lgd_ccf(scen_df, self.data.step_months)
-
-            # Calculate EAD
-            scen_df = apply_ead_amortization(scen_df, step_months, rate_col="CONTRACTUAL_CLIENT_RATE")
-
-            # Get matrix for EAD, PD, LGD, DISCOUNT
-            EAD_matrix = get_matrix_prefix(scen_df, "EAD_")
-            PD_matrix = get_matrix_prefix(scen_df, "PD_", round=True, round_nb=7)
-            LGD_matrix = get_matrix_prefix(scen_df, "LGD_", round=True, round_nb=7)
-            CCF_matrix = get_matrix_prefix(scen_df, "CCF_", round=True, round_nb=7)
-            DF_matrix = get_matrix_prefix(scen_df, "DISCOUNT_")
-
-            ECL = EAD_matrix * PD_matrix * LGD_matrix * DF_matrix
-
-            ecl_1y_cols = [i for i in range(all_steps) if step_months[i] <= 12]
-            ECL_1Y = ECL[:, ecl_1y_cols].sum(axis=1)
-            ECL_LT = ECL.sum(axis=1)
-
-            # Add ECL columns to DataFrame
-            ECL_1Y_df = pd.DataFrame(ECL_1Y, columns=[f"ECL_1Y_{scenario}"], index=scen_df.index)
-            ECL_LT_df = pd.DataFrame(ECL_LT, columns=[f"ECL_LT_{scenario}"], index=scen_df.index)
-
-            df = pd.concat([df, ECL_1Y_df, ECL_LT_df], axis=1)
-
+            # CCF
+            logger.info("\n*** Step 3: Get CCF terms from template ***\n")
+            ead_jarvis_columns = [col for col in self.data.df.columns if col.upper().startswith("EAD_JARVIS_")]
+            CCF_df = get_terms_from_template(self.data.df, cst.CCF_SHEET_MAPPING_CONFIG, key, 
+                                             self.data.template_data, "CCF_", scen,
+                                             additional_fields=["PROVISIONING_BASIS", 
+                                                                "AMORTIZATION_CATEGORY",
+                                                                "CCF",
+                                                                "CONTRACTUAL_CLIENT_RATE",
+                                                                "PC_PERCENT"] +
+                                                                ead_jarvis_columns)
+            CCF_df = extend_terms_columns(CCF_df, "NB_TIME_STEPS", "CCF_")
+            CCF_df = fill_terms_param(CCF_df, self.data.step_months,
+                                      "CCF_WITHOUT_TIME", "CCF", "CCF_")
             
+            # EAD calculation
+            logger.info("\n*** Step 4: Calculate EAD amortization by time steps ***\n")
+            EAD_df = apply_ead_amortization(df= CCF_df, 
+                                            step_months=self.data.step_months,
+                                            prov_basis_col="PROVISIONING_BASIS",
+                                            resid_mat_col="RESIDUAL_MATURITY_MONTHS",
+                                            nb_time_steps_col="NB_TIME_STEPS",
+                                            rate_col="CONTRACTUAL_CLIENT_RATE",
+                                            business_percent_col="PC_PERCENT",
+                                            amortization_map=amortization_map)
+            
+            # ECL array, step by step
+            logger.info("\n*** Step 5: Calculate ECL by time steps ***\n")
+            ECL_df = pd.DataFrame(index=self.data.df.index)
+            for i in range(1, all_steps + 1):
+                ECL_df[f"ECL_{scen}_{i}"] = (EAD_df[f"EAD_{i}"] * PD_df[f"PD_{i}"] * LGD_df[f"LGD_{i}"] * DF_df[f"DF_{i}"]).clip(lower=0)
+
+            # ECL 1Y and ECL Lifetime
+            ECL_df[f"ECL_LT_{scen}"] = ECL_df.sum(axis=1)
+            ecl_1y_cols = [f"ECL_{scen}_{i}" for i in range(all_steps) if self.data.step_months[i] <= 12]
+            ECL_df[f"ECL_1Y_{scen}"] = ECL_df[ecl_1y_cols].sum(axis=1)
+            results_ecl = ECL_df[[f"ECL_1Y_{scen}", f"ECL_LT_{scen}"]]
+
+            del [CCF_df, EAD_df, ECL_df]
+            gc.collect()
+
+            # Extract PD_1Y, LGD_1Y for reporting
+            pd_1y_cols = [f"PD_{i+1}" for i in range(all_steps) if self.data.step_months[i] <= 12 and f"PD_{i+1}" in PD_df.columns]
+            lgd_1y_cols = [f"LGD_{i+1}" for i in range(all_steps) if self.data.step_months[i] <= 12 and f"LGD_{i+1}" in LGD_df.columns]
+            pd_1y = PD_df[pd_1y_cols].sum(axis=1) if pd_1y_cols else pd.Series(pd.NA, index=self.data.df.index)
+            pd_1y.name = f"CUMULATIVE_PD_1Y_{scen}"
+            lgd_1y = LGD_df[lgd_1y_cols] if lgd_1y_cols else pd.Series(pd.NA, index=self.data.df.index)
+            lgd_1y.name = f"LGD_1Y_{scen}"
+            results_ecl = results_ecl.join(pd_1y).join(lgd_1y)
+
+            # Clean up
+            del [PD_df, LGD_df]
+            gc.collect()
+
+            # Merge results back to main DataFrame
+            self.data.df = self.data.df.join(results_ecl)
+            del results_ecl
+            gc.collect()
+        del DF_df
+        gc.collect()
+
+    def calcul_stage(self):
+        '''
+        Calculate the stage for each contract.
+        Inherited from BaseECLCalculator.
+        '''
+        return super().calcul_stage()
+    
 # ----------------------------------------
 # 2. Retail Performing ECL Calculator
 # ----------------------------------------

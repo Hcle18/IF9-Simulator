@@ -1,0 +1,22 @@
+[client]
+showSidebarNavigation = true
+
+[server]
+# Augmente la taille maximale des fichiers uploadés
+# Par défaut: 200 MB
+# Ici configuré pour 500 MB
+maxUploadSize = 500
+
+# Augmente la taille maximale des messages
+# Utile pour les gros fichiers ou DataFrames
+maxMessageSize = 500
+
+[ui]
+hideTopBar = false
+
+[theme]
+primaryColor = "#1f77b4"          # Bleu principal (boutons, liens, accents)
+backgroundColor = "#FFFFFF"        # Fond de la page principale (blanc)
+secondaryBackgroundColor = "#f8f9fa"  # Fond de la sidebar et widgets (gris clair)
+textColor = "#262730"              # Couleur du texte principal (noir)
+font = "sans serif"                # Police de caractères

@@ -8,15 +8,15 @@ from src.core import config as cst
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class TemplateValidationResult:
-    '''
-    Generic container for template validation results
-    '''
-    is_valid: bool
-    errors: List[str]
-    warnings: List[str]
-    template_name: Optional[str] = None
+# @dataclass
+# class TemplateValidationResult:
+#     '''
+#     Generic container for template validation results
+#     '''
+#     is_valid: bool
+#     errors: List[str]
+#     warnings: List[str]
+#     template_name: Optional[str] = None
 
 
 class BaseTemplate(ABC):
@@ -33,9 +33,6 @@ class BaseTemplate(ABC):
             ecl_operation_data: Container with operation details and file paths
         """
         self.data = ecl_operation_data
-        # self.operation_type = ecl_operation_data.operation_type
-        # self.status = ecl_operation_data.operation_status
-        # self.template_file_path = ecl_operation_data.template_file_path
 
     @property
     def required_sheets(self) -> List[str]:
@@ -58,7 +55,7 @@ class BaseTemplate(ABC):
 
         logger.info(f"Template data updated in ECLOperationData container with {len(self.data.template_data)} sheets")
 
-    def validate_template(self) -> TemplateValidationResult:
+    def validate_template(self) -> cst.TemplateValidationResult:
         '''
         Template method that performs basic validation and delegates specific validation to child classes.
         '''
@@ -72,7 +69,7 @@ class BaseTemplate(ABC):
         # Return early if no sheets are present
         if not data:
             logger.warning(f"No sheets found for {self.data.operation_type.value} {self.data.operation_status.value} operations.")
-            return TemplateValidationResult(
+            self.data.template_validation_results = cst.TemplateValidationResult(
                 is_valid=True,
                 errors=[],
                 warnings=["No template sheets found"],
@@ -94,7 +91,7 @@ class BaseTemplate(ABC):
         logger.info(f"Validation completed for {self.data.operation_type.value} {self.data.operation_status.value} operations.")
         logger.info(f"Validation result: {'Passed' if is_valid else 'Failed'}")
         
-        return TemplateValidationResult(
+        self.data.template_validation_results = cst.TemplateValidationResult(
             is_valid=is_valid,
             errors=errors,
             warnings=warnings,

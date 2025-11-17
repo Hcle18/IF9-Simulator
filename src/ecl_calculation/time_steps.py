@@ -15,8 +15,8 @@ def maturity(date_maturity, as_of_date):
     '''
 
     # Convert to pandas Timestamp if not already
-    date_maturity = pd.to_datetime(date_maturity, errors='coerce', dayfirst=True)
-    as_of_date = pd.to_datetime(as_of_date, errors='coerce', dayfirst=True)
+    date_maturity = pd.to_datetime(date_maturity, errors='coerce', yearfirst=True)
+    as_of_date = pd.to_datetime(as_of_date, errors='coerce', yearfirst=True)
 
     # Calculate the difference in months (fractional)
     delta = (date_maturity.dt.year - as_of_date.dt.year) * 12 + (date_maturity.dt.month - as_of_date.dt.month)
@@ -27,61 +27,6 @@ def maturity(date_maturity, as_of_date):
 
     # If maturity date is before as_of_date, return 0 
     return residual_months.clip(lower=0)
-
-
-def nb_time_steps_(residual_maturity, template_steps: pd.DataFrame):
-    '''
-    Determine the number of time steps required for a given residual maturity based on a template.
-
-    Args:
-    - residual_maturity (float): The residual maturity in months.
-    - template_steps (pd.DataFrame): A DataFrame containing the template steps with their durations.
-    Returns:
-    - int: The number of time steps required.
-
-    '''
-
-    # Vérifications d'entrée
-    if residual_maturity <= 0:
-        return 0, [] # Exposition expirée ou invalide
-    
-    if template_steps.empty or "NB_MONTHS" not in template_steps.columns:
-        logger.error("Invalid template for time steps or NB_MONTHS column is missing")
-        raise ValueError("Invalid template for time steps or NB_MONTHS column is missing")
-    
-    # Extraction des bornes du template, triées
-    bounds = template_steps["NB_MONTHS"].sort_values().to_numpy()
-
-    # Cas 1: Maturité couverte par le template existant
-    if residual_maturity <= bounds[-1]:
-        # Trouve le premier step qui couvre la maturité
-        step_index = np.searchsorted(bounds, residual_maturity, side="left")
-        nb_step = step_index + 1 # On commence le step à 1
-        # Ajouter la liste des mois correspondant
-        nb_months_list = bounds[:nb_step].tolist()
-        return nb_step, nb_months_list 
-    
-    # Cas 2: Maturité dépasse le max bound du template => Prolongation nécessaire
-    max_template = bounds[-1]
-    second_last = bounds[-2] if len(bounds) > 1 else 0
-    nb_diff = max_template - second_last # Nombre de mois d'écart entre les deux derniers steps
-
-    # Calcul du nombre de steps supplémentaires i à créer pour couvrir la maturité résiduelle
-    # Formule: max_template + nb_diff * i >= residual_maturity
-    # Donc: i >= (residual_maturity - max_template) / nb_diff
-    i = math.ceil((residual_maturity-max_template) / nb_diff)
-
-    # Le nombre de step
-    nb_step = len(bounds) + i
-
-    # La liste des mois correspondant
-    nb_months_list = bounds.tolist()
-    for j in range(1, i+1):
-        nb_months_list.append(max_template + nb_diff * j)
-
-    # print(f"Valeur du step créé est {max_template + nb_diff * i} qui couvre la maturité {residual_maturity}")
-    
-    return nb_step, nb_months_list
 
 def nb_time_steps(residual_maturities, template_steps: pd.DataFrame):
     """

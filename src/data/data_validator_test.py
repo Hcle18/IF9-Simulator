@@ -5,7 +5,7 @@ from src.core.librairies import *
 from src.core import config as cst
 from src.core import base_data as bcls
 from src.core import base_template as tplm
-from src.data.mapping_columns import mapping_columns, normalize_field_name
+from src.utils.mapping_columns import mapping_columns, normalize_field_name
 
 logger = logging.getLogger(__name__)
 # ========================================
