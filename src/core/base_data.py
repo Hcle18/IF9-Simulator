@@ -69,19 +69,20 @@ class BaseValidator(ABC):
         try:
             logger.info(f"Mapping fields for {self.data.operation_type.value} - {self.data.operation_status.value} operations")
             # Get the template for mapping fields according to the operation type and the operation status
-            template_name = cst.MAPPING_FIELDS_TEMPLATES_CONFIG.get((self.data.operation_type, self.data.operation_status))
-            if not template_name:
-                logger.error(f"No mapping template found for operation type {self.data.operation_type} and status {self.data.operation_status}")
-                return self.data.df
+            template_name = cst.MAPPING_FIELDS_FILES_CONFIG.get((self.data.operation_type, self.data.operation_status))
+            try:
+                base_path = Path(__file__).resolve().parents[2]
+                logger.info(f"Base path for mapping fields: {base_path}")
+            except NameError:
+                base_path = Path.cwd()
+            template_path = base_path / "inputs" / "referentials" / template_name
 
             # Get the mapping dataset from the template
-            mapping_dataset = self.data.template_data.get(template_name)
-            if mapping_dataset is None or mapping_dataset.empty:
-                logger.error(f"Mapping template '{template_name}' not found in the provided template data.")
-                return self.data.df
+            mapping_dataset = pd.read_excel(template_path, skiprows=3)
 
             # Get the mapping dictionary from the mapping dataset
-            mapping_dict = dict(zip(mapping_dataset['CALCULATOR_COLUMN_NAME'], mapping_dataset['SIMULATION_DATA_COLUMN_NAME']))
+            mapping_dict = dict(zip(mapping_dataset['CALCULATOR_COLUMN_NAME'], 
+                                    mapping_dataset['SIMULATION_DATA_COLUMN_NAME']))
 
             # Map the fields using the mapping dictionary
             self.data.df = mapping_columns(input_df=self.data.df, field_mapping=mapping_dict)
@@ -90,16 +91,17 @@ class BaseValidator(ABC):
             self.data.df.columns = [col.strip().upper() for col in self.data.df.columns]
 
             # Columns formatting
+            logger.info("Column formatting according to mapping dataset")
             mapping_format = dict(zip(mapping_dataset['CALCULATOR_COLUMN_NAME'], 
                                       mapping_dataset['VALUE_TYPE']))
             for col, val_type in mapping_format.items():
                 if col.strip().upper() in self.data.df.columns:
                     self.data.df[col.strip().upper()] = coerce_series_to_type(self.data.df[col.strip().upper()], 
                                                                               val_type)
-
+            logger.info(f"Field mapping completed. DataFrame shape: {self.data.df.shape}")
         except Exception as e:
             logger.info(f"Error during field mapping: {e}")
-            self.data.df.columns = self.data.df.columns.str.strip().str.upper()
+            self.data.df.columns = self.data.df.columns.str.strip().str.upper()      
             
     @abstractmethod
     def validate_data(self) -> cst.DataValidationResult :

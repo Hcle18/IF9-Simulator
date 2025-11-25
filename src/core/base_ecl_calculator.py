@@ -197,10 +197,10 @@ class BaseECLCalculator(ABC):
         
         # Compute ECL multi
         self.data.df["ECL_1Y_MULTI"] = 0.0
-        self.data.df["ECL_LIFETIME_MULTI"] = 0.0
+        self.data.df["ECL_LT_MULTI"] = 0.0
 
         for scen, weight in weights.items():
             self.data.df["ECL_1Y_MULTI"] += self.data.df[f"ECL_1Y_{scen}"] * weight
-            self.data.df["ECL_LIFETIME_MULTI"] += self.data.df[f"ECL_LIFETIME_{scen}"] * weight
+            self.data.df["ECL_LT_MULTI"] += self.data.df[f"ECL_LT_{scen}"] * weight
         return self.data.df
     

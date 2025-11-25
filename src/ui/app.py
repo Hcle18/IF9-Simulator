@@ -5,9 +5,10 @@ Multi-page Streamlit application for ECL calculations
 
 import streamlit as st
 from pathlib import Path
-import sys
-
+import logging
 from src.factory import simulation_manager
+from src.utils.logging_config import setup_logging
+from src.ui.utils.ui_logger import StreamlitLogHandler, ui_setup_logging, display_ui_logs
 from src.ui.utils.ui_components import get_custom_css
 from src.ui.utils.session_persistence import load_session_state, save_session_state
 from src.ui.utils.init_session_state import init_session_state
@@ -21,6 +22,12 @@ st.set_page_config(
 )
 # Initialize session state with default values
 init_session_state()
+
+# if "set_log" not in st.session_state:
+#     #logger = setup_logging(log_level="INFO")
+#     handler = ui_setup_logging()
+#     #logger.addHandler(handler)
+#     st.session_state.set_log = True
 
 # Load saved session state if available (survives page refresh)
 load_session_state()
@@ -119,13 +126,67 @@ pages = {
     
     "Operations": [
         st.Page("app_pages/1_Simulation.py", title="Simulation", icon=":material/target:"),
-        st.Page("app_pages/2_Validation.py", title="Validation", icon=":material/check_circle:"),
+        st.Page("app_pages/2_Validation_REFACTORED.py", title="Validation", icon=":material/check_circle:"),
         st.Page("app_pages/3_Results.py", title="Results", icon=":material/bar_chart:"),
     ]
 }
+# Sidebar section for logs - must be created EVERY rerun
+with st.sidebar:
+    st.markdown("#### 📋 Application Logs")
+       
+    # Utiliser st.status() pour les mises à jour en temps réel
+    status_area = st.status("Ready", expanded=False, state="complete")
 
-pg = st.navigation(pages)
-pg.run()
+if "set_log" not in st.session_state:
+    # Setup logging configuration (console + file)
+    setup_logging(log_level="INFO")
+    
+    # Get the ROOT logger to capture all module logs
+    root_logger = logging.getLogger()
+    
+    # Remove any existing StreamlitLogHandler to avoid duplicates
+    root_logger.handlers = [h for h in root_logger.handlers if not isinstance(h, StreamlitLogHandler)]
+    
+    # Add StreamlitLogHandler to root logger (without container initially)
+    handler = StreamlitLogHandler(None)
+    handler.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
+    
+    st.session_state.log_handler = handler
+    st.session_state.set_log = True
+    
+    # Log startup message
+    logging.info("✅ Application started")
+
+# Update the handler's status container (every rerun)
+if st.session_state.get('log_handler'):
+    handler = st.session_state.log_handler
+    handler.status_container = status_area  # Update the status container for real-time updates
+    
+    # Display current log in status with appropriate state
+    if handler.logs_buffer:
+        state = "running" if handler.is_running else "complete"
+        status_area.update(label=handler.logs_buffer[0], state=state)
+    else:
+        status_area.update(label="Ready", state="complete")
+
+# Check for running calculations across all simulations
+with st.sidebar:
+    # Show calculation progress indicator if any calculation is running
+    calculations_running = []
+    for key in st.session_state:
+        if key.startswith("ecl_calculation_") and isinstance(st.session_state[key], dict):
+            sim_name = key.replace("ecl_calculation_", "")
+            calc_state = st.session_state[key]
+            if calc_state.get("running", False):
+                calculations_running.append(sim_name)
+    
+    if calculations_running:
+        st.markdown("---")
+        st.warning(f"⏳ **Calculation in progress**")
+        for sim in calculations_running:
+            st.caption(f"📊 {sim}")
+        st.caption("💡 You can navigate freely - calculations continue in background")
 
 # Footer in sidebar
 with st.sidebar:
@@ -155,3 +216,6 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 
+
+pg = st.navigation(pages)
+pg.run()

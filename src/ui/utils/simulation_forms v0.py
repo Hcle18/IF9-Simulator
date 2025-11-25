@@ -12,9 +12,7 @@ from src.factory import simulation_manager
 from src.ui.utils.get_directories import get_subdirectories, format_dir_path, get_files_in_directory
 logger = logging.getLogger(__name__)  
 
-#parent_dir = Path(__file__).parent.parent.parent.parent
-sample_dir = Path(__file__).parent.parent.parent.parent / "sample"  
-
+parent_dir = Path(__file__).parent.parent.parent.parent
 @st.dialog(title="Create New Simulation")
 def create_simulation_dialog():
     st.markdown(
@@ -124,209 +122,6 @@ def create_simulation_dialog():
             st.rerun()
 
 
-# Template types configuration (shared across functions)
-TEMPLATE_TYPES = {
-    'PD *': {'label': '📊 PD (Probability of Default)', 'required': True, 'base_key': 'PD'},
-    'LGD *': {'label': '💰 LGD (Loss Given Default)', 'required': True, 'base_key': 'LGD'},
-    'CCF': {'label': '🔄 CCF (Credit Conversion Factor)', 'required': False, 'base_key': 'CCF'},
-    'Staging': {'label': '🎯 Staging Rules', 'required': False, 'base_key': 'Staging'},
-    'Segmentation': {'label': '📦 Segmentation Rules', 'required': False, 'base_key': 'Segmentation'},
-    'Mapping Time Steps': {'label': '⏳ Mapping Time Steps', 'required': False, 'base_key': 'Mapping Time Steps'}
-}
-
-# Example template paths - Chemins complets des fichiers d'exemple à télécharger
-# Ces fichiers sont dans un répertoire complètement différent des templates à charger
-EXAMPLE_TEMPLATE_PATHS = {
-    'PD': sample_dir / 'templates' / 'Template_outil_V1.xlsx',
-    'LGD': sample_dir / 'sample' / 'templates' / 'example_LGD_template.xlsx',
-    'CCF': sample_dir / 'sample' / 'templates' / 'example_CCF_template.xlsx',
-    'Staging': sample_dir / 'sample' / 'templates' / 'example_Staging_template.xlsx',
-    'Segmentation': sample_dir / 'sample' / 'templates' / 'example_Segmentation_template.xlsx',
-    'Mapping Time Steps': sample_dir / 'sample' / 'templates' / 'example_Mapping_Time_Steps_template.xlsx'
-}
-
-
-def _initialize_context_session_state():
-    """Initialize session state for context form"""
-    if "selected_data_file" not in st.session_state:
-        st.session_state.selected_data_file = None
-    
-    # Template mode: 'single' or 'multiple'
-    if "template_mode" not in st.session_state:
-        st.session_state.template_mode = 'single'
-    
-    # Single template file (classic mode)
-    if "selected_single_template_file" not in st.session_state:
-        st.session_state.selected_single_template_file = None
-    
-    # Multiple template files (new mode)
-    if "selected_template_files" not in st.session_state:
-        st.session_state.selected_template_files = {key: [] for key in TEMPLATE_TYPES.keys()}
-    
-    if "selected_jarvis_files" not in st.session_state:
-        st.session_state.selected_jarvis_files = []
-
-
-def _render_context_name_input():
-    """Render context name input field"""
-    st.markdown("""
-        <h2 style="margin-bottom: 0.5rem; margin-top: -1rem;">
-            Context Name <span style="color: #e74c3c;">*</span>
-        </h2>
-        """, unsafe_allow_html=True)
-    
-    return st.text_input(
-        "",
-        value="",
-        placeholder="e.g., Context Prod",
-        help="Unique name for this context within the simulation",
-        key="context_name_input",
-        label_visibility="collapsed"
-    )
-
-
-def _render_jarvis_file_selector(parent_dir, operation_type, operation_status):
-    """Render Jarvis file selector (for Non Retail Performing only)"""
-    st.markdown("**📊 Jarvis Files**")
-    
-    jarvis_suffix_path = cst.CONFIG_DATA_DIR.get((operation_type, operation_status))
-    jarvis_base_path = str(parent_dir / jarvis_suffix_path)
-    
-    jarvis_dirs = get_subdirectories(jarvis_base_path)
-    
-    jarvis_search_input = st.text_input(
-        "Search folders:",
-        value="",
-        placeholder="Type to filter folders. Example: 2025Q3, SIMU",
-        key="jarvis_search_input",
-        icon=":material/search:"
-    )
-    
-    if jarvis_search_input:
-        jarvis_dirs = [d for d in jarvis_dirs if jarvis_search_input.lower() in d.lower()]
-    
-    selected_jarvis_dir = st.selectbox(
-        "Select folder:",
-        options=jarvis_dirs,
-        format_func=lambda x: format_dir_path(x, jarvis_base_path),
-        key="jarvis_folder_select"
-    )
-    
-    jarvis_files = get_files_in_directory(selected_jarvis_dir, extensions=['.zip', '.csv'])
-    
-    if jarvis_files:
-        selected_jarvis_file = st.selectbox(
-            "Select file to add:",
-            options=jarvis_files,
-            format_func=lambda x: Path(x).name,
-            key="jarvis_file_select"
-        )
-        
-        if st.button("Add this Jarvis File", key="add_jarvis_btn", 
-                    icon=":material/add:", type="primary"):
-            if selected_jarvis_file not in st.session_state.selected_jarvis_files:
-                st.session_state.selected_jarvis_files.append(selected_jarvis_file)
-                st.success(f"Added {Path(selected_jarvis_file).name}", icon=":material/check:")
-            else:
-                st.warning("File already added!")
-    
-    # Display selected Jarvis files
-    if len(st.session_state.selected_jarvis_files) > 0:
-        st.markdown("**Selected Jarvis Files:**")
-        for idx, jarvis_item in enumerate(st.session_state.selected_jarvis_files):
-            col_j1, col_j2 = st.columns([4, 1])
-            with col_j1:
-                file_name = jarvis_item.name if hasattr(jarvis_item, 'name') else Path(jarvis_item).name
-                st.info(f"{idx+1}. {file_name}")
-            with col_j2:
-                def remove_jarvis_files(idx):
-                    st.session_state.selected_jarvis_files = [
-                        item for i, item in enumerate(st.session_state.selected_jarvis_files) if i != idx
-                    ]
-                st.button("❌", key=f"remove_jarvis_{idx}", 
-                         on_click=lambda idx=idx: remove_jarvis_files(idx))
-
-
-def _render_template_tab(tpl_key, tpl_config, parent_dir, operation_type, operation_status, example_templates):
-    """Render a single template tab content"""
-    # Get base key for example templates (without *)
-    base_key = tpl_config.get('base_key', tpl_key)
-    
-    # Header with download link
-    col_header, col_download = st.columns([3, 1])
-    with col_header:
-        required_marker = " (Required)" if tpl_config['required'] else " (Optional)"
-        st.markdown(f"**{tpl_config['label']}**{required_marker}")
-    
-    with col_download:
-        # Utiliser le chemin complet du fichier d'exemple (répertoire différent)
-        example_path = example_templates.get(base_key, None)
-        if example_path and example_path.exists() and example_path.is_file():
-            with open(example_path, 'rb') as f:
-                st.download_button(
-                    label="📥 Example",
-                    data=f.read(),
-                    file_name=f"example_{base_key}_template.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"download_example_{tpl_key}",
-                    use_container_width=True
-                )
-        else:
-            st.caption("ℹ️ No example available")
-    
-    # Initialize template files list
-    if tpl_key not in st.session_state.selected_template_files or \
-       st.session_state.selected_template_files[tpl_key] is None:
-        st.session_state.selected_template_files[tpl_key] = []
-    
-    # File selector and add button
-    col_select, col_add = st.columns([3, 1])
-    
-    with col_select:
-        selected_file = render_file_selector(
-            label=f"Select {tpl_key} template",
-            file_type="Excel",
-            extensions=['.xlsx', '.xls'],
-            base_path_suffix=cst.CONFIG_TEMPLATES_DIR.get((operation_type, operation_status)),
-            key_prefix=f"template_{tpl_key.lower()}",
-            parent_dir=parent_dir
-        )
-    
-    with col_add:
-        if st.button("Add File", key=f"add_template_{tpl_key}", 
-                    type="primary", use_container_width=True,
-                    disabled=not selected_file):
-            if selected_file:
-                file_path_str = str(selected_file) if not hasattr(selected_file, 'name') else selected_file.name
-                current_files = st.session_state.selected_template_files[tpl_key] or []
-                existing_paths = [str(f) if not hasattr(f, 'name') else f.name for f in current_files]
-                
-                if file_path_str not in existing_paths:
-                    st.session_state.selected_template_files[tpl_key].append(selected_file)
-                else:
-                    st.warning("⚠️ File already added!")
-    
-    # Display list of added files
-    files_list = st.session_state.selected_template_files[tpl_key] or []
-    if files_list and len(files_list) > 0:
-        st.markdown(f"**Selected Files ({len(files_list)}):**")
-        for file_idx, file in enumerate(files_list):
-            file_name = file.name if hasattr(file, 'name') else Path(file).name
-            col_file, col_remove = st.columns([5, 1])
-            with col_file:
-                st.success(f"✅ {file_name}")
-            with col_remove:
-                st.button("🗑️", key=f"remove_{tpl_key}_{file_idx}",
-                         help="Remove this file",
-                         use_container_width=True,
-                         on_click=lambda tpl_key=tpl_key, file_idx=file_idx: 
-                                  st.session_state.selected_template_files[tpl_key].pop(file_idx))
-    elif tpl_config['required']:
-        st.warning(f"⚠️ At least one {tpl_key} template is required")
-    else:
-        st.info(f"ℹ️ No files selected (optional)")
-
-
 def render_file_selector(label, file_type, extensions, 
                          base_path_suffix, key_prefix, parent_dir):
     """
@@ -345,142 +140,246 @@ def render_file_selector(label, file_type, extensions,
     
     st.markdown(f"**{label}**")
     
-    # Use base path for files
-    base_path = str(parent_dir / base_path_suffix)
-    
-    # Get directories
-    dirs = get_subdirectories(base_path)
-    
-    # Text input for search subdirectories
-    search_input = st.text_input(
-        "Search folders:",
-        value="",
-        placeholder="Type to filter folders. Example: 2025Q3, SIMU",
-        key=f"{key_prefix}_search_input",
-        icon=":material/search:"
-    )
-
-    # Filter directories based on search input
-    if search_input:
-        dirs = [d for d in dirs if search_input.lower() in d.lower()]
-
-    selected_dir = st.selectbox(
-        "Select folder:",
-        options=dirs,
-        format_func=lambda x: format_dir_path(x, base_path),
-        key=f"{key_prefix}_folder_select",
-        width="stretch"
+    # Radio button to choose between folder selection and upload
+    mode = st.radio(
+        "Choose method:",
+        options=["📂 Select from folder", "📤 Upload file"],
+        key=f"{key_prefix}_mode_radio",
+        horizontal=True
     )
     
-    # Get files in selected directory
-    files = get_files_in_directory(selected_dir, extensions=extensions)
-    
-    if files:
-        selected_file = st.selectbox(
-            "Select file:",
-            options=files,
-            format_func=lambda x: Path(x).name,
-            key=f"{key_prefix}_file_select"
+    if mode == "📂 Select from folder":
+        # Use base path for files
+        base_path = str(parent_dir / base_path_suffix)
+        
+        # Get directories
+        dirs = get_subdirectories(base_path)
+        
+        selected_dir = st.selectbox(
+            "Select folder:",
+            options=dirs,
+            format_func=lambda x: format_dir_path(x, base_path),
+            key=f"{key_prefix}_folder_select",
+            width="stretch"
         )
-        st.success(f"✅ {Path(selected_file).name}")
-        return selected_file
-    else:
-        st.warning(f"No {file_type} files found in this folder")
-        return None
+        
+        # Get files in selected directory
+        files = get_files_in_directory(selected_dir, extensions=extensions)
+        
+        if files:
+            selected_file = st.selectbox(
+                "Select file:",
+                options=files,
+                format_func=lambda x: Path(x).name,
+                key=f"{key_prefix}_file_select"
+            )
+            st.success(f"✅ {Path(selected_file).name}")
+            return selected_file
+        else:
+            st.warning(f"No {file_type} files found in this folder")
+            return None
+    
+    else:  # Upload mode
+        uploaded_file = st.file_uploader(
+            f"Upload {file_type} file:",
+            type=[ext.replace('.', '') for ext in extensions],
+            key=f"{key_prefix}_file_uploader"
+        )
+        
+        if uploaded_file is not None:
+            st.success(f"✅ {Path(uploaded_file.name).name} uploaded")
+            return uploaded_file
+        else:
+            return None
         
 @st.dialog(title="Create New Context")
-def render_context_form(operation_type, operation_status):
-    """Render the context creation form"""
+def render_context_form(operation_type, operation_status, parent_dir):
+    """
+    Render the context creation form
     
-    # Initialize session state
-    _initialize_context_session_state()
+    Args:
+        operation_type: Current operation type
+        operation_status: Current operation status
+        parent_dir: Parent directory path
     
-    # Dialog styling
-    st.markdown("""
+    Returns:
+        Tuple of (data_file, template_file, jarvis_files, context_name, data_identifier, submitted, cancelled)
+    """
+    
+    # Initialize session state for selected files
+    if "selected_data_file" not in st.session_state:
+        st.session_state.selected_data_file = None
+    if "selected_template_file" not in st.session_state:
+        st.session_state.selected_template_file = None
+    if "selected_jarvis_files" not in st.session_state:
+        st.session_state.selected_jarvis_files = []
+    st.markdown(
+        """
         <style>
         div[data-testid="stDialog"] div[role="dialog"] {
-            width: 80%;
+        width: 80%; /* Adjust width as a percentage of the page */
         }
         </style>
-        """, unsafe_allow_html=True)
-    
-    # Context name input
-    context_name = _render_context_name_input()
-    
-    # Get parent directory
-    parent_dir = Path(cst.CONFIG_PARENT_DIR.get((operation_type, operation_status)))
+        """,
+        unsafe_allow_html=True
+    )
 
-    # Data and Jarvis File Selection
-    if operation_type == cst.OperationType.NON_RETAIL and operation_status == cst.OperationStatus.PERFORMING:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.session_state.selected_data_file = render_file_selector(
-                label="📁 Data File", file_type="CSV/Excel/Zip", extensions=['.zip'],
-                base_path_suffix=cst.CONFIG_DATA_DIR.get((operation_type, operation_status)),
-                key_prefix="data", parent_dir=parent_dir
-            )
-        with col2:
-            _render_jarvis_file_selector(parent_dir, operation_type, operation_status)
-    else:
-        st.session_state.selected_data_file = render_file_selector(
-            label="📁 Data File", file_type="CSV/Excel/Zip", extensions=['.zip'],
-            base_path_suffix=cst.CONFIG_DATA_DIR.get((operation_type, operation_status)),
-            key_prefix="data", parent_dir=parent_dir
-        )
-        if len(st.session_state.selected_jarvis_files) > 0:
-            st.session_state.selected_jarvis_files = []
+    # Add Context name
+    # Pré-remplir si on est en mode édition
+    # default_context_name = ""
+    # if st.session_state.get('editing_mode') and 'editing_context_idx' in st.session_state:
+    #     editing_idx = st.session_state['editing_context_idx']
+    #     if 'current_contexts' in st.session_state and editing_idx < len(st.session_state.current_contexts):
+    #         default_context_name = st.session_state.current_contexts[editing_idx].get('context_name', '')
     
-    # Template Files Section
     st.markdown("""
-        <h2 style="margin-bottom: 0.5rem; margin-top: 0;">
-            📄 Template Files <span style="color: #e74c3c;">*</span>
-        </h2>
-        """, unsafe_allow_html=True)
-    
-    # Radio button to choose template mode
-    template_mode = st.radio(
-        "Choose template mode:",
-        options=["📄 Single Template File", "📁 Multiple Template Files (by type)"],
-        index= 1,
-        key="template_mode_radio",
-        horizontal=True,
-        help="Single: One file with all sheets | Multiple: Separate files for PD, LGD, CCF, etc."
+                <h2 style="margin-bottom: 0.5rem; margin-top: -1rem;">
+                    Context Name <span style="color: #e74c3c;">*</span>
+                </h2>
+                """, 
+                unsafe_allow_html=True)
+    context_name = st.text_input(
+        "",  # Label vide
+        value="",
+        placeholder="e.g., Context Prod",
+        help="Unique name for this context within the simulation",
+        key="context_name_input",
+        label_visibility="collapsed"  # Cache complètement le label vide
     )
     
-    # Update session state based on selection
-    st.session_state.template_mode = 'single' if template_mode.startswith("📄") else 'multiple'
+    # Data and Template File Selection
+    col1, col2 = st.columns(2)
     
-    if st.session_state.template_mode == 'single':
-        # Single template file mode (classic)
-        st.session_state.selected_single_template_file = render_file_selector(
-            label="Select Template File",
+    with col1:
+        st.session_state.selected_data_file = render_file_selector(
+            label="📁 Data File",
+            file_type="CSV/Excel/Zip",
+            extensions=['.csv', '.xlsx', '.xls', '.zip'],
+            base_path_suffix="sample/data",
+            key_prefix="data",
+            parent_dir=parent_dir,
+        )
+    
+    with col2:
+        st.session_state.selected_template_file = render_file_selector(
+            label="📄 Template File",
             file_type="Excel",
             extensions=['.xlsx', '.xls'],
-            base_path_suffix=cst.CONFIG_TEMPLATES_DIR.get((operation_type, operation_status)),
-            key_prefix="template_single",
+            base_path_suffix="sample/templates",
+            key_prefix="template",
             parent_dir=parent_dir
         )
-        # Clear multiple mode data
-        st.session_state.selected_template_files = {key: [] for key in TEMPLATE_TYPES.keys()}
+    
+    # Jarvis files selection - Only for Non Retail
+    if operation_type == cst.OperationType.NON_RETAIL and operation_status == cst.OperationStatus.PERFORMING:
+        st.markdown("**📊 Jarvis Files**")
         
+        # Radio button to choose between folder selection and upload
+        jarvis_mode = st.radio(
+            "Choose method:",
+            options=["📂 Select from folder", "📤 Upload file"],
+            key="jarvis_mode_radio",
+            horizontal=True
+        )
+        
+        if jarvis_mode == "📂 Select from folder":
+            # Use Sample Data as default base path for Jarvis files
+            jarvis_base_path = str(parent_dir / "sample" / "data")
+            
+            col_jarvis1, col_jarvis2 = st.columns([2, 2])
+            
+            with col_jarvis1:
+                jarvis_dirs = get_subdirectories(jarvis_base_path)
+                selected_jarvis_dir = st.selectbox(
+                    "Select folder:",
+                    options=jarvis_dirs,
+                    format_func=lambda x: format_dir_path(x, jarvis_base_path),
+                    key="jarvis_folder_select"
+                )
+            
+            with col_jarvis2:
+                jarvis_files = get_files_in_directory(selected_jarvis_dir, extensions=['.zip', '.csv'])
+                
+                if jarvis_files:
+                    selected_jarvis_file = st.selectbox(
+                        "Select file to add:",
+                        options=jarvis_files,
+                        format_func=lambda x: Path(x).name,
+                        key="jarvis_file_select"
+                    )
+                    
+                    if st.button("Add this Jarvis File", key="add_jarvis_btn", icon=":material/add:", type="secondary"):
+                        if selected_jarvis_file not in st.session_state.selected_jarvis_files:
+                            st.session_state.selected_jarvis_files.append(selected_jarvis_file)
+                            st.success(f"Added {Path(selected_jarvis_file).name}", icon=":material/check:")
+                        else:
+                            st.warning("File already added!")
+        
+        else:  # Upload mode
+            uploaded_jarvis_files = st.file_uploader(
+                "Upload Jarvis file(s):",
+                type=['zip', 'csv'],
+                accept_multiple_files=True,
+                key="jarvis_file_uploader"
+            )
+            
+            if uploaded_jarvis_files:
+                # Check for duplicates within uploaded files first
+                uploaded_names = [f.name for f in uploaded_jarvis_files]
+                duplicates = [name for name in uploaded_names if uploaded_names.count(name) > 1]
+                
+                if duplicates:
+                    unique_duplicates = list(set(duplicates))
+                    st.error(f"❌ Duplicate files detected in upload: {', '.join(unique_duplicates)}. Please remove duplicates and try again.")
+                    return  # Stop processing if duplicates found
+                
+                # Check for existing files and add new ones
+                existing_names = [
+                    f.name if hasattr(f, 'name') else Path(f).name 
+                    for f in st.session_state.selected_jarvis_files
+                ]
+                
+                files_already_exist = [f.name for f in uploaded_jarvis_files if f.name in existing_names]
+                new_files = [f for f in uploaded_jarvis_files if f.name not in existing_names]
+                
+                if files_already_exist:
+                    st.warning(f"⚠️ Files already exist in selection: {', '.join(files_already_exist)}")
+                
+                # Only add new files
+                for new_file in new_files:
+                    st.session_state.selected_jarvis_files.append(new_file)
+                
+                if new_files:
+                    st.success(f"✅ {len(new_files)} new file(s) uploaded")
+                elif files_already_exist:
+                    st.info("ℹ️ No new files were added (all files already exist)")
+        
+        # Display selected Jarvis files
+        if len(st.session_state.selected_jarvis_files) > 0:
+            st.markdown("**Selected Jarvis Files:**")
+            for idx, jarvis_item in enumerate(st.session_state.selected_jarvis_files):
+                col_j1, col_j2 = st.columns([4, 1])
+                with col_j1:
+                    # Handle both file paths and uploaded files
+                    file_name = jarvis_item.name if hasattr(jarvis_item, 'name') else Path(jarvis_item).name
+                    st.info(f"{idx+1}. {file_name}")
+                with col_j2:
+                    def remove_jarvis_files(idx):
+                        st.session_state.selected_jarvis_files = [
+                            item for i, item in enumerate(st.session_state.selected_jarvis_files) if i != idx
+                        ]
+                    st.button("❌", key=f"remove_jarvis_{idx}", on_click=lambda idx=idx: remove_jarvis_files(idx))
     else:
-        # Multiple template files mode (new)
-        tabs = st.tabs(list(TEMPLATE_TYPES.keys()))
-        for idx, (tpl_key, tpl_config) in enumerate(TEMPLATE_TYPES.items()):
-            with tabs[idx]:
-                _render_template_tab(tpl_key, tpl_config, parent_dir, operation_type, 
-                                     operation_status, EXAMPLE_TEMPLATE_PATHS)
-        # Clear single mode data
-        st.session_state.selected_single_template_file = None
-
-    # Context form summary and submission
+        # Clear Jarvis files if not Non Retail Performing
+        if len(st.session_state.selected_jarvis_files) > 0:
+            st.session_state.selected_jarvis_files = []
+   
+    # Context form
     with st.form("context_form", clear_on_submit=True):
         # Use selected files from session state
         context_name = st.session_state.get("context_name_input", "").strip()
         data_file = st.session_state.selected_data_file
-        template_mode = st.session_state.template_mode
-        single_template_file = st.session_state.selected_single_template_file
-        template_files = st.session_state.selected_template_files
+        template_file = st.session_state.selected_template_file
         jarvis_files = st.session_state.selected_jarvis_files
         
         # Display summary
@@ -497,34 +396,11 @@ def render_context_form(operation_type, operation_status):
         else:
             st.error("❌ No data file selected")
         
-        # Display template files summary based on mode
-        missing_required_templates = []
-        
-        if template_mode == 'single':
-            # Single template mode
-            if single_template_file:
-                file_name = single_template_file.name if hasattr(single_template_file, 'name') else Path(single_template_file).name
-                st.success(f"📄 Template File (Single): {file_name}")
-            else:
-                st.error("❌ Template file is required!")
-                missing_required_templates.append('Template')
+        if template_file:
+            file_name = template_file.name if hasattr(template_file, 'name') else Path(template_file).name
+            st.success(f"📄 Template: {file_name}")
         else:
-            # Multiple templates mode
-            for tpl_key, tpl_config in TEMPLATE_TYPES.items():
-                tpl_files_list = template_files.get(tpl_key, [])
-                file_count = len(tpl_files_list) if tpl_files_list else 0
-                
-                if file_count > 0:
-                    file_names = [f.name if hasattr(f, 'name') else Path(f).name for f in tpl_files_list]
-                    if file_count == 1:
-                        st.success(f"📄 {tpl_config['label']}: {file_names[0]}")
-                    else:
-                        st.success(f"📄 {tpl_config['label']} ({file_count} files): {', '.join(file_names)}")
-                elif tpl_config['required']:
-                    st.error(f"❌ {tpl_config['label']}: Required but not selected")
-                    missing_required_templates.append(tpl_key)
-                else:
-                    st.info(f"⚪ {tpl_config['label']}: Not selected (optional)")
+            st.error("❌ No template file selected")
         
         if (operation_type == cst.OperationType.NON_RETAIL and 
             operation_status == cst.OperationStatus.PERFORMING):
@@ -561,24 +437,18 @@ def render_context_form(operation_type, operation_status):
                 st.error("❌ Context name is required!")
             elif context_name in submitted_contexts:
                 st.error("❌ Context name must be unique!")
-            elif not data_file:
-                st.error("❌ Data file is required!")
-            elif missing_required_templates:
-                st.error(f"❌ Required template(s) missing: {', '.join(missing_required_templates)}")
+            elif not data_file or not template_file:
+                st.error("❌ Data file and template file are required!")
             elif (operation_type == cst.OperationType.NON_RETAIL and 
                   operation_status == cst.OperationStatus.PERFORMING and
                   (not jarvis_files or len(jarvis_files) == 0)):
                 st.error("❌ Jarvis files are required for Non Retail Performing operation!")
             else:
-                # Créer l'objet contexte avec format unifié
+                # Créer l'objet contexte
                 context_data = {
                     'context_name': context_name,
                     'data_file': data_file,
-                    'template_mode': template_mode,
-                    'template_files': {
-                        'single': single_template_file if template_mode == 'single' else None,
-                        'multiple': template_files.copy() if template_mode == 'multiple' else None
-                    },
+                    'template_file': template_file,
                     'jarvis_files': jarvis_files
                 }
                 
@@ -602,13 +472,22 @@ def render_context_form(operation_type, operation_status):
                 
                 # Nettoyer les fichiers sélectionnés
                 st.session_state.selected_data_file = None
-                st.session_state.selected_template_files = {key: [] for key in TEMPLATE_TYPES.keys()}
+                st.session_state.selected_template_file = None
                 st.session_state.selected_jarvis_files = []
+                
                 st.rerun()
 
         if cancelled:
+            # # Réinitialiser le mode édition si on annule
+            # if 'editing_mode' in st.session_state:
+            #     del st.session_state['editing_mode']
+            # if 'editing_context_idx' in st.session_state:
+            #     del st.session_state['editing_context_idx']
+            
             # Nettoyer les fichiers sélectionnés
-            _initialize_context_session_state()
+            st.session_state.selected_data_file = None
+            st.session_state.selected_template_file = None
+            st.session_state.selected_jarvis_files = []
             st.rerun()        
         
         # return data_file, template_file, jarvis_files, context_name, submitted, cancelled
@@ -653,23 +532,14 @@ def render_simulation_submit():
                 operation_status = st.session_state.simulations_config['operation_status']
 
                 for ctx in st.session_state.simulations_config['contexts']:
-                    # Extract template path based on mode
-                    template_mode = ctx.get('template_mode', 'single')
-                    template_files_data = ctx.get('template_files', {})
-                    
-                    # Determine template_path based on mode
-                    if template_mode == 'single':
-                        template_path = template_files_data.get('single') or ctx.get('template_file')  # Backward compatibility
-                    else:  # multiple mode
-                        template_path = template_files_data.get('multiple', {})
-                    
+                    # Here you would normally call the simulation manager to add and launch the simulation
                     context_name = ctx.get('context_name')
                     st.session_state.manager.add_simulation(
                         simulation_name = context_name,
                         operation_type = operation_type,
                         operation_status = operation_status,
                         data_path = ctx.get('data_file'),
-                        template_path = template_path,  # Can be single file or dict of files
+                        template_path = ctx.get('template_file'),
                         list_jarvis_file_path = ctx.get('jarvis_files', [])
                     )
 
@@ -780,19 +650,12 @@ def display_context_summary(contexts: list, operation_type, operation_status):
     for idx, ctx in enumerate(contexts):
         context_name = ctx.get('context_name')
         data_file = ctx.get('data_file')
-        
-        # Handle different template formats
-        template_mode = ctx.get('template_mode', 'single')  # Default to single for backward compatibility
-        template_files_data = ctx.get('template_files', {})
-        
-        # Old format support (for backward compatibility)
-        old_template_file = ctx.get('template_file')
-        
+        template_file = ctx.get('template_file')
         jarvis_files = ctx.get('jarvis_files', [])
 
         # Get file names
         data_name = data_file.name if hasattr(data_file, 'name') else Path(data_file).name if data_file else "N/A"
-        
+        template_name = template_file.name if hasattr(template_file, 'name') else Path(template_file).name if template_file else "N/A"
         jarvis_items = []
         if jarvis_files and len(jarvis_files) > 0:
             jarvis_items = [
@@ -806,45 +669,10 @@ def display_context_summary(contexts: list, operation_type, operation_status):
 
             # Context details
             with col_1:
-                st.write(f"📁 **Data File**: {data_name}")
-                
-                
-                # Display templates based on mode
-                if template_mode == 'single':
-                    # Single template mode
-                    single_file = template_files_data.get('single') if isinstance(template_files_data, dict) else old_template_file
-                    if single_file:
-                        file_name = single_file.name if hasattr(single_file, 'name') else Path(single_file).name
-                        st.write(f"- 📄 **Template File**: {file_name}")
-                    else:
-                        st.write(f"- 📄 **Template File**: Not provided")
-                        
-                elif template_mode == 'multiple':
-                    st.write("📄 **Template Files**")
-                    # Multiple templates mode
-                    with st.expander("Details"):
-                        multiple_files = template_files_data.get('multiple', {})
-                        if multiple_files:
-                            for tpl_key, tpl_config in TEMPLATE_TYPES.items():
-                                #tpl_label = tpl_config['label'].replace('📊 ', '').replace('💰 ', '').replace('🔄 ', '').replace('🎯 ', '').replace('📦 ', '').replace('⏳ ', '')
-                                tpl_label = tpl_config['label']
-                                tpl_files_list = multiple_files.get(tpl_key, [])
-                                if tpl_files_list and len(tpl_files_list) > 0:
-                                    file_names = [f.name if hasattr(f, 'name') else Path(f).name for f in tpl_files_list]
-                                    if len(file_names) == 1:
-                                        st.write(f"  - {tpl_label}: {file_names[0]}")
-                                    else:
-                                        st.write(f"  - {tpl_label} ({len(file_names)}): {', '.join(file_names)}")
-                                else:
-                                    st.write(f"  - {tpl_label}: Not provided, using default")
-                
-                # Fallback for very old format
-                # elif old_template_file:
-                #     template_name = old_template_file.name if hasattr(old_template_file, 'name') else Path(old_template_file).name
-                #     st.write(f"- 📄 **Template File**: {template_name}")
-                
+                st.write(f"- 📁 **Data File**: {data_name}")
+                st.write(f"- 📄 **Template File**: {template_name}")
                 if operation_type == cst.OperationType.NON_RETAIL and operation_status == cst.OperationStatus.PERFORMING:
-                    st.write(f"📊 **Jarvis Files** ({len(jarvis_items)}): {jarvis_names}")
+                    st.write(f"- 📊 **Jarvis Files** {len(jarvis_items)}: {jarvis_names}")
             with col_2:
                 with st.popover("",
                                 type="tertiary", use_container_width=True,

@@ -70,9 +70,9 @@ class ZipCSVImporter(bcls.BaseImporter):
             
         try:
             # Get data configuration for the operation type and status
-            data_config = cst.DATA_LOADER_CONFIG.get(
-                (self.data.operation_type, self.data.operation_status), {}
-            )
+            # data_config = cst.DATA_LOADER_CONFIG.get(
+            #     (self.data.operation_type, self.data.operation_status), {}
+            # )
             
             # Read the zip file
             with zipfile.ZipFile(file_path, 'r') as zf:
@@ -88,15 +88,17 @@ class ZipCSVImporter(bcls.BaseImporter):
                     raise ValueError("Expected at least one csv. No csv file found inside the upload zip folder")
                 
                 # Read all the available csv files with the appropriate data config
-                csv_params = {
-                    'sep': data_config.get('csv_separator', None),
-                    'decimal': data_config.get('decimal', '.'),
-                    'encoding': data_config.get('encoding', 'utf-8'),
-                    'engine': data_config.get('engine', 'python'),
-                    'dtype': data_config.get('dtype', None)
-                }
-
-                data = [pd.read_csv(zf.open(csv_file), **csv_params) for csv_file in csv_files]
+                # csv_params = {
+                #     'sep': data_config.get('csv_separator', None),
+                #     'decimal': data_config.get('decimal', '.'),
+                #     'encoding': data_config.get('encoding', 'utf-8'),
+                #     'engine': data_config.get('engine', 'python'),
+                #     'dtype': data_config.get('dtype', None)
+                # }
+                try:
+                    data = [pd.read_csv(zf.open(csv_file), sep=";", decimal=",", dtype=str) for csv_file in csv_files]
+                except Exception as e:
+                    data = [pd.read_csv(zf.open(csv_file), sep=None, dtype=str) for csv_file in csv_files]
             
             # Handle invalid data
             if not data:
@@ -155,7 +157,7 @@ def get_data_importer(ecl_operation_data: cst.ECLOperationData) -> bcls.BaseImpo
     
     else:
         logging.error(f"Unsupported file type: {file_path}. Please use one of the following:{', '.join(cst.SUPPORTED_FILE_TYPES)}")
-        raise ValueError(f"Unsupported file type: {file_path}")
+        raise ValueError(f"Unsupported file type: '{Path(file_path).suffix}' for {file_path}")
 
 # ==========================================
 # ENTRY POINT TO CREATE DATA LOADER

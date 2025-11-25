@@ -49,7 +49,7 @@ def apply_discount_factor(df, as_of_date_col, exposure_end_date_col, annual_rate
 
     result_dfs = []
     for amort_type, discount_func in discount_map.items():
-        mask = df['AMORTIZATION_TYPE'] == amort_type
+        mask = df['AMORTIZATION_CATEGORY'] == amort_type
         if mask.any():
             df_subset = df.loc[mask]
             if discount_func == discount_factor_quarterly:

@@ -41,14 +41,16 @@ def nb_time_steps(residual_maturities, template_steps: pd.DataFrame):
     # residual_maturities = np.asarray(residual_maturities)
 
     # Step 1: In bounds and valid
-    valid = residual_maturities > 0
+    valid = (residual_maturities > 0) & np.isfinite(residual_maturities)
     in_bounds = (residual_maturities <= max_template) & valid
     step_indices = np.searchsorted(bounds, residual_maturities, side="left")
     nb_steps = np.where(in_bounds, step_indices + 1, 0)
 
     # Step 2: Out of bounds
     out_bounds = (residual_maturities > max_template) & valid
-    i_extra = np.ceil((residual_maturities - max_template) / nb_diff).astype(int)
+    # Gérer les valeurs non-finies avant conversion en int
+    i_extra_raw = np.ceil((residual_maturities - max_template) / nb_diff)
+    i_extra = np.where(np.isfinite(i_extra_raw), i_extra_raw, 0).astype(int)
     nb_steps[out_bounds] = len(bounds) + i_extra[out_bounds]
 
     # Step 3: Build nb_months_list for each row

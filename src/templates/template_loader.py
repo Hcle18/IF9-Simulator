@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class NonRetailS1S2TemplateLoader(tplm.BaseTemplate):
 
-    def _perform_specific_validation(self) -> tplm.TemplateValidationResult:
+    def _perform_specific_validation(self):
         '''
         Validate template for Non Retail S1 + S2 operations
         Performs validation checks on the imported data.
@@ -159,18 +159,18 @@ class RetailS3TemplateLoader(tplm.BaseTemplate):
 # ========================================
 # Template Loader Factory
 # ========================================
-
+registry_loader: dict[tuple[cst.OperationType, cst.OperationStatus], tplm.BaseTemplate] = {
+    (cst.OperationType.RETAIL, cst.OperationStatus.PERFORMING): RetailS1S2TemplateLoader,
+    (cst.OperationType.RETAIL, cst.OperationStatus.DEFAULTED): RetailS3TemplateLoader,
+    (cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING): NonRetailS1S2TemplateLoader
+}
 class TemplateLoaderFactory:
     """
     Factory class for creating appropriate template loaders based on operation type and status.
     """
 
     # Registry mapping operation type & status to template loader classes
-    _registry_loader: dict[tuple[cst.OperationType, cst.OperationStatus], tplm.BaseTemplate] = {
-        (cst.OperationType.RETAIL, cst.OperationStatus.PERFORMING): RetailS1S2TemplateLoader,
-        (cst.OperationType.RETAIL, cst.OperationStatus.DEFAULTED): RetailS3TemplateLoader,
-        (cst.OperationType.NON_RETAIL, cst.OperationStatus.PERFORMING): NonRetailS1S2TemplateLoader
-    }
+    _registry_loader = registry_loader
 
     @classmethod
     def get_template_loader(cls, ecl_operation_data: cst.ECLOperationData) -> tplm.BaseTemplate:

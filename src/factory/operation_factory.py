@@ -85,6 +85,9 @@ class OperationFactory:
     def calcul_staging(self):
         self.ecl_calculator.calcul_stage()
 
+    def calcul_ecl_multi(self, weights: dict):
+        self.ecl_calculator.calcul_ecl_multi(weights)
+
     def create_excel_summary(self, contexts: str, output_path: str):
         self.results_exporter.export_results(contexts, output_path)
 

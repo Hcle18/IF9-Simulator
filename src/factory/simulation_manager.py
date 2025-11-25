@@ -12,7 +12,6 @@ from src.utils import get_data_identifier
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class SharedDataContext:
     """
@@ -58,7 +57,6 @@ class SimulationManager:
         self._prepared_simulations: set = set()  # Track which simulations are prepared
         self._temp_files_cache: Dict[str, str] = {}  # Cache: original_name -> temp_path
         
-        logger.info("SimulationManager initialized")
     
     def add_simulation(
         self,
@@ -337,20 +335,23 @@ class SimulationManager:
                 f"Simulation '{simulation_name}' must be prepared before running. "
                 "Call prepare_simulation() or prepare_all_simulations() first."
             )
-        
-        factory = self.simulations[simulation_name]
-        
-        logger.info(f"Running ECL calculation for '{simulation_name}'...")
-        
-        # Run the ECL calculation steps
-        factory.get_time_steps()
-        factory.get_scenarios()
-        factory.create_segment_by_rules()
-        factory.get_amortization_type()
-        factory.calcul_ecl()
-        factory.calcul_staging()
-        
-        logger.info(f"ECL calculation completed for '{simulation_name}'")
+        try:
+            factory = self.simulations[simulation_name]
+            
+            logger.info(f"Running ECL calculation for '{simulation_name}'...")
+            
+            # Run the ECL calculation steps
+            factory.get_time_steps()
+            factory.get_scenarios()
+            factory.create_segment_by_rules()
+            factory.get_amortization_type()
+            factory.calcul_ecl()
+            factory.calcul_staging()
+            
+            logger.info(f"ECL calculation completed for '{simulation_name}'")
+        except Exception as e:
+            logger.info(f"Error during ECL calculation for '{simulation_name}': {e}")
+            raise e
         
         return factory.ecl_operation_data.df
     

@@ -39,7 +39,6 @@ class DataValidationResult:
     '''
     Generic container for data validation results
     '''
-    validation_type: Optional[str] = None
     errors: List[str]
     warnings: List[str]
     validation_summary: Dict[str, Any] = None
@@ -94,7 +93,7 @@ TEMPLATE_SHEETS_CONFIG: Dict[Tuple[OperationType, OperationStatus], List[str]] =
 
     # Non Retail Performing (S1 + S2)
     (OperationType.NON_RETAIL, OperationStatus.PERFORMING): [
-        "DRIVERS NON RETAIL"
+        "DRIVERS NON RETAIL",
         "F0-Mapping fields Non Retail", 
         "F1-Segmentation rules",
         "F2-Mapping time steps",
@@ -154,9 +153,9 @@ TEMPLATE_REQUIRED_FIELDS_CONFIG: Dict[str, List[str]] = {
 }
 
 # Configuration for mapping fields
-MAPPING_FIELDS_TEMPLATES_CONFIG: Dict[Tuple[OperationType, OperationStatus], str] = {
+MAPPING_FIELDS_FILES_CONFIG: Dict[Tuple[OperationType, OperationStatus], str] = {
     # Non Retail S1+S2 configuration
-    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "F0-Mapping fields Non Retail",
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "Mapping fields Non Retail.xlsx",
 
     # Retail S1+S2 configuration
     (OperationType.RETAIL, OperationStatus.PERFORMING): "Mapping fields Retail S1S2",
@@ -252,4 +251,41 @@ HISTO_PD_TEMPLATE_CONFIG: Dict[Tuple[OperationType, OperationStatus], str] = {
 
 RATING_DEFAULT_CONFIG: Dict[OperationType, List[Any]] = {
     OperationType.NON_RETAIL: ["8", "9", "10"]
+}
+
+# Define dir
+CONFIG_PARENT_DIR: Dict[Tuple[OperationType, OperationStatus], str] = {
+    # Non Retail S1+S2 configuration
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "./inputs",
+    # Retail S1+S2 configuration
+    (OperationType.RETAIL, OperationStatus.PERFORMING): "./inputs",
+    # Retail S3 configuration
+    (OperationType.RETAIL, OperationStatus.DEFAULTED): "./inputs"
+}
+
+CONFIG_DATA_DIR: Dict[Tuple[OperationType, OperationStatus], str] = {
+    # Non Retail S1+S2 configuration
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "data/Non Retail/S1-S2",
+    # Retail S1+S2 configuration
+    (OperationType.RETAIL, OperationStatus.PERFORMING): "data/Retail/S1-S2",
+    # Retail S3 configuration
+    (OperationType.RETAIL, OperationStatus.DEFAULTED): "data/Retail/S3"
+}
+
+CONFIG_TEMPLATES_DIR: Dict[Tuple[OperationType, OperationStatus], str] = {
+    # Non Retail S1+S2 configuration
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "templates/Non Retail/S1-S2",
+    # Retail S1+S2 configuration
+    (OperationType.RETAIL, OperationStatus.PERFORMING): "templates/Retail/S1-S2",
+    # Retail S3 configuration
+    (OperationType.RETAIL, OperationStatus.DEFAULTED): "templates/Retail/S3"
+}
+
+CONFIG_DEFAULT_TEMPLATES: Dict[Tuple[OperationType, OperationStatus], str] = {
+    # Non Retail S1+S2 configuration
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "sample/templates/Non Retail/S1-S2/Template_outil_V1.xlsx",
+    # Retail S1+S2 configuration
+    (OperationType.RETAIL, OperationStatus.PERFORMING): "sample/templates/Retail/S1-S2/Template_outil_V1.xlsx",
+    # Retail S3 configuration
+    (OperationType.RETAIL, OperationStatus.DEFAULTED): "sample/templates/Retail/S3/Template_outil_V1.xlsx"
 }

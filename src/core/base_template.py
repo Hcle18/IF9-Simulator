@@ -42,17 +42,37 @@ class BaseTemplate(ABC):
     def import_template(self) -> Dict[str, pd.DataFrame]:
         '''
         Import templates and update the ECLOperationData container.
+        Supports both single template file (legacy) and multiple template files by type.
         Returns TemplateData containing DataFrames for all required sheets
         '''
         # Warning if no sheets are configured for operation type & status
         if not self.required_sheets:
             logger.warning(f"No sheets configured for {self.data.operation_type.value} {self.data.operation_status.value} operations.")
-            self.data.template_data ={}
+            self.data.template_data = {}
         else:
-            # Read excel file with specific sheets and store as a dict
-            template_dict = self._read_excel_file(self.data.template_file_path, sheets=self.required_sheets)
-            self.data.template_data = template_dict
+            # Check if template_file_path is a dict (multiple mode) or single file (legacy mode)
+            if isinstance(self.data.template_file_path, dict):
+                # Multiple template files mode
+                logger.info("Importing templates from multiple files (by type)")
+                self.data.template_data = self._import_multiple_template_files()
+            else:
+                # Single template file mode (legacy)
+                logger.info("Importing templates from single file")
+                template_dict = self._read_excel_file(self.data.template_file_path, sheets=self.required_sheets)
+                self.data.template_data = template_dict
 
+        # Add default template sheet if required but missing
+        default_template_path_suffix = cst.CONFIG_DEFAULT_TEMPLATES.get((self.data.operation_type, self.data.operation_status), None)
+        default_template_path = Path(__file__).resolve().parents[2] / str(default_template_path_suffix) if default_template_path_suffix else None
+        missing_sheets = set(self.required_sheets) - set(self.data.template_data.keys())
+
+        if default_template_path.exists():
+            for sheet in missing_sheets:
+                logger.info(f"Adding default template sheet '{sheet}' from {default_template_path}")
+                # Read the default template sheet
+                default_template_dict = self._read_excel_file(default_template_path, sheets=[sheet])
+                if sheet in default_template_dict:
+                    self.data.template_data[sheet] = default_template_dict[sheet]
         logger.info(f"Template data updated in ECLOperationData container with {len(self.data.template_data)} sheets")
 
     def validate_template(self) -> cst.TemplateValidationResult:
@@ -148,6 +168,46 @@ class BaseTemplate(ABC):
         '''
         pass
 
+    def _import_multiple_template_files(self) -> Dict[str, pd.DataFrame]:
+        '''
+        Import and merge multiple template files organized by type (PD, LGD, CCF, etc.).
+        
+        :return: Dictionary with sheet names as keys and merged DataFrames as values
+        '''
+        all_dataframes = {}
+        
+        # Iterate through template types (PD, LGD, CCF, Staging, Segmentation)
+        for template_type, file_paths in self.data.template_file_path.items():
+            if not file_paths or len(file_paths) == 0:
+                logger.info(f"No files provided for template type: {template_type}")
+                continue
+            
+            logger.info(f"Processing {len(file_paths)} file(s) for template type: {template_type}")
+            
+            # Process each file for this template type
+            for file_path in file_paths:
+                # Convert to string if it's a Path-like object
+                file_path_str = str(file_path) if hasattr(file_path, '__str__') else file_path
+                
+                # Read the file with all required sheets
+                template_dict = self._read_excel_file(file_path_str, sheets=self.required_sheets)
+                
+                # Merge DataFrames from this file into the global dict
+                for sheet_name, df in template_dict.items():
+                    if sheet_name in all_dataframes:
+                        # Sheet already exists, concatenate DataFrames
+                        logger.info(f"Concatenating sheet '{sheet_name}' from {template_type} file")
+                        all_dataframes[sheet_name] = pd.concat(
+                            [all_dataframes[sheet_name], df], 
+                            ignore_index=True
+                        )
+                    else:
+                        # First occurrence of this sheet
+                        all_dataframes[sheet_name] = df
+        
+        logger.info(f"Successfully merged templates from multiple files. Total sheets: {len(all_dataframes)}")
+        return all_dataframes
+
     def _get_required_sheets(self) -> List[str]:
         '''
         Get required sheet names for this operation type and status from configuration.
@@ -165,30 +225,37 @@ class BaseTemplate(ABC):
         :return: Un dictionnaire avec les noms des feuilles comme clés et les DataFrames comme valeurs.
         '''
 
+        # Convert file_path to string if needed
+        file_path_str = str(file_path)
+        
         # Handle not excel file: not endswith ('xls', 'xlsx') (case-insensitive)
-        if not file_path.lower().endswith(('.xls', '.xlsx')):
-            logger.error(f"File '{file_path}' is not an Excel file.")
+        if not file_path_str.lower().endswith(('.xls', '.xlsx')):
+            logger.error(f"File '{file_path_str}' is not an Excel file.")
             return {}
 
         try:
-            logger.info(f"Reading Excel templates from file: {file_path}")
+            logger.info(f"Reading Excel templates from file: {file_path_str}")
             df_dict = {}
             default_skip_row = cst.SHEET_START_ROW_CONFIG.get("default", 0) # Default skip row if not declared
 
             for sheet_name in sheets:
+                # Check if sheet_name exists in the Excel file, otherwise continue
+                if sheet_name not in pd.ExcelFile(file_path_str).sheet_names:
+                    logger.warning(f"Sheet '{sheet_name}' not found in Excel file '{file_path_str}'. Skipping.")
+                    continue
                 skip_row = cst.SHEET_START_ROW_CONFIG.get(sheet_name, default_skip_row)
-                df_dict[sheet_name] = pd.read_excel(file_path, sheet_name=sheet_name, skiprows=skip_row)
-            logger.info(f"Successfully read Excel file: {file_path}. List of sheet names: {', '.join(df_dict.keys())}")
+                df_dict[sheet_name] = pd.read_excel(file_path_str, sheet_name=sheet_name, skiprows=skip_row)
+            logger.info(f"Successfully read Excel file: {file_path_str}. List of sheet names: {', '.join(df_dict.keys())}")
 
             return df_dict
         
         # Handle not found file path
         except FileNotFoundError:
-            logger.error(f"Excel file '{file_path}' not found.")
-            return {}
+            logger.error(f"Excel file '{file_path_str}' not found.")
+            raise FileNotFoundError(f"Excel file '{file_path_str}' not found.")
         except OSError as e:
-            logger.error(f"OS error when accessing Excel file '{file_path}': {e}")
-            return {}
+            logger.error(f"OS error when accessing Excel file '{file_path_str}': {e}")
+            raise OSError(f"OS error when accessing Excel file '{file_path_str}': {e}")
         except Exception as e:
-            logger.error(f"Error reading Excel file '{file_path}': {e}")
-            return {}
+            logger.error(f"Error reading Excel file '{file_path_str}': {e}")
+            raise RuntimeError(f"Error reading Excel file '{file_path_str}': {e}")

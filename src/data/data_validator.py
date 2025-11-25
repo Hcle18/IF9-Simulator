@@ -32,7 +32,7 @@ class NRS1S2DataValidator(bcls.BaseValidator):
             errors.append(f"Missing required fields: {', '.join(missing_fields)}")
 
         # Check whether Number of ECL_RUN_ID is consistent with number of Jarvis files
-        if self.data.list_jarvis_file_paths:
+        if self.data.list_jarvis_file_paths and "ECL_RUN_ID" in self.data.df.columns:
             unique_ecl_run_ids = self.data.df["ECL_RUN_ID"].nunique()
             if unique_ecl_run_ids != len(self.data.list_jarvis_file_paths):
                 errors.append(f"Number of unique ECL_RUN_ID ({unique_ecl_run_ids}) does not match number of Jarvis files ({len(self.data.list_jarvis_file_paths)})")
@@ -42,6 +42,9 @@ class NRS1S2DataValidator(bcls.BaseValidator):
             warnings=warnings
         )
 
+    def get_external_data(self):
+        pass
+    
 # ========================================
 # Data Validator Factory
 # ========================================

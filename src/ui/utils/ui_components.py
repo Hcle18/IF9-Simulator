@@ -97,8 +97,28 @@ def get_custom_css():
         }
         
         /* Hide Streamlit branding */
-        #MainMenu {visibility: hidden;}
+        MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
+               
+        /* Status container in sidebar - smaller font for st.status() */
+        [data-testid="stSidebar"] [data-testid="stExpander"],
+        [data-testid="stSidebar"] [data-testid="stExpander"] *,
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary,
+        [data-testid="stSidebar"] [data-testid="stExpander"] div,
+        [data-testid="stSidebar"] [data-testid="stExpander"] p,
+        [data-testid="stSidebar"] [data-testid="stExpander"] span {
+            font-size: 0.9rem !important;
+            line-height: 1.3 !important;
+        }
+        
+        /* Remove border from status area in sidebar */
+        [data-testid="stSidebar"] [data-testid="stExpander"] {
+            border: none !important;
+        }
+        
+        [data-testid="stSidebar"] [data-testid="stExpander"] details {
+            border: none !important;
+        }
         </style>
     """
 
@@ -272,39 +292,72 @@ def display_context_summary(contexts: list, operation_type, operation_status):
         data_name = data_file.name if hasattr(data_file, 'name') else Path(data_file).name if data_file else "N/A"
         template_name = template_file.name if hasattr(template_file, 'name') else Path(template_file).name if template_file else "N/A"
         
-        # Build HTML
-        jarvis_html = ""
-        if operation_type == cst.OperationType.NON_RETAIL and operation_status == cst.OperationStatus.PERFORMING:
-            if jarvis_files and len(jarvis_files) > 0:
-                jarvis_items = []
-                for jf in jarvis_files:
-                    jf_name = jf.name if hasattr(jf, 'name') else Path(jf).name
-                    jarvis_items.append(f'<div class="jarvis-item">{jf_name}</div>')
-                jarvis_html = f'''
-                    <div class="context-detail">
-                        <span class="context-label">📊 Jarvis Files:</span>
-                    </div>
-                    <div class="jarvis-list">
-                        {''.join(jarvis_items)}
-                    </div>
-                '''
+        jarvis_names = []
+        if jarvis_files and len(jarvis_files) > 0:
+            for f in jarvis_files:
+                if hasattr(f, 'name'):
+                    jarvis_names.append(f.name)
+                else:
+                    jarvis_names.append(Path(f).name)
+        # Créer une carte avec colonnes
+        with st.container(border=True):
+            st.markdown(f"#### 🔸 {context_name}")
+            
+            col1, col2 = st.columns([4, 1])
+            
+            with col1:
+                st.write(f"📁 **Data:** {data_name}")
+                st.write(f"📄 **Template:** {template_name}")
+                
+                if jarvis_names:
+                    st.write(f"📊 **Jarvis Files ({len(jarvis_names)}):**")
+                    for name in jarvis_names:
+                        st.write(f"  • {name}")
+                else:
+                    st.write("📊 **Jarvis Files:** None")
+            
+            with col2:
+                # Menu déroulant avec bouton "..."
+                with st.popover("⋮", use_container_width=True):
+                    st.markdown("**Actions**")
+                    
+                    # Bouton Edit
+                    if st.button("✏️ Edit", key=f"edit_ctx_{idx}", use_container_width=True, type="secondary"):
+                        # Charger le contexte à éditer
+                        st.session_state['editing_context_idx'] = idx
+                        st.session_state['editing_mode'] = True
+                        
+                        # Pré-remplir les champs avec les données du contexte
+                        ctx_to_edit = contexts[idx]
+                        st.session_state.selected_data_file = ctx_to_edit.get('data_file')
+                        st.session_state.selected_template_file = ctx_to_edit.get('template_file')
+                        st.session_state.selected_jarvis_files = ctx_to_edit.get('jarvis_files', [])
+                        
+                        # Ouvrir le dialog en déclenchant un rerun
+                        st.rerun()
+                    
+                    # Bouton Delete avec confirmation
+                    if st.session_state.get(f'confirm_delete_{idx}'):
+                        st.warning("⚠️ Confirm deletion?", icon="⚠️")
+                        col_yes, col_no = st.columns(2)
+                        with col_yes:
+                            if st.button("✅ Yes", key=f"confirm_yes_{idx}", use_container_width=True):
+                                st.session_state.contexts.pop(idx)
+                                del st.session_state[f'confirm_delete_{idx}']
+                                st.success("Context deleted!")
+                                st.rerun()
+                        with col_no:
+                            if st.button("❌ No", key=f"confirm_no_{idx}", use_container_width=True):
+                                del st.session_state[f'confirm_delete_{idx}']
+                                st.rerun()
+                    else:
+                        if st.button("🗑️ Delete", key=f"delete_ctx_{idx}", use_container_width=True, type="secondary"):
+                            st.session_state[f'confirm_delete_{idx}'] = True
+                            st.rerun()
+            
+        #st.divider()
         
-        st.markdown(f"""
-            <div class="context-card">
-                <div class="context-header">
-                    🔸 {context_name}
-                </div>
-                <div class="context-detail">
-                    <span class="context-label">📁 Data File:</span>
-                    <span class="context-value">{data_name}</span>
-                </div>
-                <div class="context-detail">
-                    <span class="context-label">📄 Template File:</span>
-                    <span class="context-value">{template_name}</span>
-                </div>
-                {jarvis_html}
-            </div>
-        """, unsafe_allow_html=True)
+        
         
 def display_validation_result(title, passed, total, status="success"):
     """

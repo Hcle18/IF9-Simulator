@@ -23,7 +23,7 @@ def get_template_data_keys(
         logger.warning(f"Template '{template_name}' not found in template data.")
         raise KeyError(f"Template '{template_name}' not found in template data.")
     
-    template_df = template_data[template_name]
+    template_df = template_data.get(template_name)
 
     if len(key_mapping) < 2:
         raise ValueError(f"Key mapping for template '{template_name}' must contain a nested list.")
@@ -113,6 +113,8 @@ def get_terms_from_template(simu_df: pd.DataFrame, dict_config:Dict, dict_key:Tu
         logger.error("Simulation data not found or empty.")
         raise ValueError("Simulation data not found or empty.")
     
+    additional_fields = [field for field in additional_fields if field in simu_df.columns]
+    
     # Check for missing keys
     missing_left_keys = [col for col in left_key if col not in simu_df.columns]
     missing_right_keys = [col for col in right_key if col not in template_df_cplt.columns]
@@ -144,7 +146,7 @@ def get_terms_from_template(simu_df: pd.DataFrame, dict_config:Dict, dict_key:Tu
                                                           if isinstance(x, str) else x)
 
     # Filter template data for the specified scenario
-    if "SCENARIO" in template_df.columns:
+    if "SCENARIO" in template_df_cplt.columns:
         template_df = template_df_cplt[template_df_cplt["SCENARIO"].astype(str).str.strip().str.upper() == scenario.strip().upper()]
         if template_df.empty:
             defaulted_scen_mask = template_df_cplt["SCENARIO"].astype(str).str.strip().str.upper() == defaulted_scen.strip().upper()
@@ -152,7 +154,7 @@ def get_terms_from_template(simu_df: pd.DataFrame, dict_config:Dict, dict_key:Tu
                 template_df = template_df_cplt[defaulted_scen_mask]
                 logger.info(f"Scenario '{scenario}' not found. Defaulting to '{defaulted_scen}' for key: {dict_key}")
             else:
-                template_df = template_df_cplt
+                template_df = template_df_cplt.drop_duplicates(subset=right_key)
     else:
         template_df = template_df_cplt
 
@@ -217,7 +219,9 @@ def pd_interpolation(df, step_months, nb_steps_col="NB_TIME_STEPS",
     Vectorized PD interpolation for the last time step using a common step_months array.
     Handles nb_steps == 1 case specifically.
     """
-    nb_steps = df[nb_steps_col].astype(int).to_numpy()
+    # Gérer les valeurs non-finies avant conversion en int
+    nb_steps_raw = pd.to_numeric(df[nb_steps_col], errors='coerce').fillna(0)
+    nb_steps = nb_steps_raw.astype(int).to_numpy()
     residual_maturity = df[maturity_col].to_numpy()
     as_of_date = pd.to_datetime(df["AS_OF_DATE"], errors="coerce", dayfirst=True)
     step_months_arr = np.array(step_months)

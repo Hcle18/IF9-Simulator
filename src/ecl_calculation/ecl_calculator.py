@@ -126,7 +126,7 @@ class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
         DF_df = apply_discount_factor(self.data.df, 
                                       as_of_date_col="AS_OF_DATE", 
                                       exposure_end_date_col="EXPOSURE_END_DATE",
-                                      annual_rate_col="ANNUAL_DISCOUNT_RATE",
+                                      annual_rate_col="CONTRACTUAL_CLIENT_RATE",
                                       step_months=self.data.step_months,
                                       discount_map=discount_map)
         
@@ -137,9 +137,12 @@ class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
             logger.info(f"\n\n--------------------Calculating ECL for scenario: {scen} ------------------\n")
             # PD
             logger.info("\n*** Step 1: Get PD terms from template ***\n")
+            import time
+            time.sleep(5)
             PD_df = get_terms_from_template(self.data.df, cst.PD_SHEET_MAPPING_CONFIG, key, 
                                             self.data.template_data, "PD_", scen,
                                             additional_fields=["AS_OF_DATE", "EXPOSURE_END_DATE"])
+            
             PD_df = extend_terms_columns(PD_df, "NB_TIME_STEPS", "PD_")
             PD_df = pd_interpolation(PD_df, self.data.step_months,
                                      nb_steps_col="NB_TIME_STEPS",
@@ -147,16 +150,19 @@ class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
                                      method="linear", pd_prefix="PD_")
             
             # LGD
+            
             logger.info("\n*** Step 2: Get LGD terms from template ***\n")
+            time.sleep(5)
             LGD_df = get_terms_from_template(self.data.df, cst.LGD_SHEET_MAPPING_CONFIG, key, 
                                              self.data.template_data, "LGD_", scen,
-                                             additional_fields=["IFRS9_LGD_PERCENTAGE"])
+                                             additional_fields=["LGD_VALUE"])
             LGD_df = extend_terms_columns(LGD_df, "NB_TIME_STEPS", "LGD_")
             LGD_df = fill_terms_param(LGD_df, self.data.step_months,
-                                      "LGD_WITHOUT_TIME", "IFRS9_LGD_PERCENTAGE", "LGD_")
+                                      "LGD_WITHOUT_TIME", "LGD_VALUE", "LGD_")
 
             # CCF
             logger.info("\n*** Step 3: Get CCF terms from template ***\n")
+            time.sleep(5)
             ead_jarvis_columns = [col for col in self.data.df.columns if col.upper().startswith("EAD_JARVIS_")]
             CCF_df = get_terms_from_template(self.data.df, cst.CCF_SHEET_MAPPING_CONFIG, key, 
                                              self.data.template_data, "CCF_", scen,
@@ -172,6 +178,7 @@ class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
             
             # EAD calculation
             logger.info("\n*** Step 4: Calculate EAD amortization by time steps ***\n")
+            time.sleep(5)
             EAD_df = apply_ead_amortization(df= CCF_df, 
                                             step_months=self.data.step_months,
                                             prov_basis_col="PROVISIONING_BASIS",
@@ -189,7 +196,8 @@ class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
 
             # ECL 1Y and ECL Lifetime
             ECL_df[f"ECL_LT_{scen}"] = ECL_df.sum(axis=1)
-            ecl_1y_cols = [f"ECL_{scen}_{i}" for i in range(all_steps) if self.data.step_months[i] <= 12]
+            # Les colonnes ECL commencent à 1, pas 0
+            ecl_1y_cols = [f"ECL_{scen}_{i+1}" for i in range(all_steps) if self.data.step_months[i] <= 12]
             ECL_df[f"ECL_1Y_{scen}"] = ECL_df[ecl_1y_cols].sum(axis=1)
             results_ecl = ECL_df[[f"ECL_1Y_{scen}", f"ECL_LT_{scen}"]]
 
@@ -198,10 +206,15 @@ class NRS1S2ECLCalculator(bcalc.BaseECLCalculator):
 
             # Extract PD_1Y, LGD_1Y for reporting
             pd_1y_cols = [f"PD_{i+1}" for i in range(all_steps) if self.data.step_months[i] <= 12 and f"PD_{i+1}" in PD_df.columns]
-            lgd_1y_cols = [f"LGD_{i+1}" for i in range(all_steps) if self.data.step_months[i] <= 12 and f"LGD_{i+1}" in LGD_df.columns]
+            lgd_1y_cols = [f"LGD_{i+1}" for i in range(all_steps) if self.data.step_months[i] == 12 and f"LGD_{i+1}" in LGD_df.columns]
             pd_1y = PD_df[pd_1y_cols].sum(axis=1) if pd_1y_cols else pd.Series(pd.NA, index=self.data.df.index)
             pd_1y.name = f"CUMULATIVE_PD_1Y_{scen}"
-            lgd_1y = LGD_df[lgd_1y_cols] if lgd_1y_cols else pd.Series(pd.NA, index=self.data.df.index)
+
+            # Agréger LGD à 12 mois en prenant la dernière valeur (ou moyenne)
+            if lgd_1y_cols:
+                lgd_1y = LGD_df[lgd_1y_cols].iloc[:, -1] if len(lgd_1y_cols) == 1 else LGD_df[lgd_1y_cols].mean(axis=1)
+            else:
+                lgd_1y = pd.Series(pd.NA, index=self.data.df.index)
             lgd_1y.name = f"LGD_1Y_{scen}"
             results_ecl = results_ecl.join(pd_1y).join(lgd_1y)
 

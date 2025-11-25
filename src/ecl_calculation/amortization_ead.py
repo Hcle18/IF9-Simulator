@@ -130,7 +130,7 @@ def apply_ead_amortization(df, step_months,
     result_dfs = []
 
     for amortization_type, func in amortization_map.items():
-        mask = df['AMORTIZATION_TYPE'] == amortization_type
+        mask = df['AMORTIZATION_CATEGORY'] == amortization_type
         if mask.any():
             df_subset = df[mask]
             if func == constant_amortization:

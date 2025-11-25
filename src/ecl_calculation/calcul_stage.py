@@ -115,7 +115,11 @@ def stage_get_pd_cumulative(simulation_df: pd.DataFrame,
                                value_vars=pd_columns,
                                var_name='Step',
                                value_name='CUMULATED_PD_LIFETIME')
-    template_df_melt["Step"] = template_df_melt["Step"].str.replace("PD_", "").astype(int)
+    # Gérer les valeurs non-numériques avant conversion en int
+    template_df_melt["Step"] = pd.to_numeric(
+        template_df_melt["Step"].str.replace("PD_", ""), 
+        errors='coerce'
+    ).fillna(0).astype(int)
 
     # cap number of steps to max available in template
     simulation_df[simu_nb_step_col] = simulation_df[simu_nb_step_col].clip(upper=len(pd_columns))
