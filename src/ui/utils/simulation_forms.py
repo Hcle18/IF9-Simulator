@@ -6,6 +6,9 @@ Separated into functions for better maintainability
 import logging
 import streamlit as st
 from pathlib import Path
+import threading
+import time
+import warnings
 from src.core import config as cst
 from src.templates.template_loader import registry_loader
 from src.factory import simulation_manager
@@ -620,6 +623,22 @@ def callback_submit_button():
     if st.session_state.validation_complete == True:
         st.warning("Simulation has already been submitted and validated.")
         return
+    
+    # Initialize submission state
+    if "submission_state" not in st.session_state:
+        st.session_state.submission_state = {
+            "running": False,
+            "started": False,
+            "completed": False,
+            "error": None,
+            "result_container": None,
+            "thread": None
+        }
+    
+    # Mark as running
+    st.session_state.submission_state["running"] = True
+    st.session_state.submission_state["started"] = False
+    
     for key in ["disable_button_modify", 
                 "disable_add_context", 
                 "disable_submit",
@@ -628,8 +647,68 @@ def callback_submit_button():
             st.session_state[key] = True
     st.session_state.launch_simulation_submit = True
 
-def render_simulation_submit():
+# Shared result container for thread-safe communication
+class SubmissionResult:
+    def __init__(self):
+        self.completed = False
+        self.success = False
+        self.error = None
+        self.sim_name = None
 
+def run_submission_thread(manager, simulation_config, result_container):
+    """Execute simulation submission and preparation in background thread"""
+    
+    # Suppress Streamlit ScriptRunContext warning in thread
+    warnings.filterwarnings('ignore', message='.*ScriptRunContext.*')
+    
+    # Suppress in logger if it appears there
+    streamlit_logger = logging.getLogger('streamlit.runtime.scriptrunner.script_runner')
+    streamlit_logger.setLevel(logging.ERROR)
+    
+    try:
+        sim_name = simulation_config['simulation_name']
+        operation_type = simulation_config['operation_type']
+        operation_status = simulation_config['operation_status']
+        
+        # Add simulations
+        for ctx in simulation_config['contexts']:
+            # Extract template path based on mode
+            template_mode = ctx.get('template_mode', 'single')
+            template_files_data = ctx.get('template_files', {})
+            
+            # Determine template_path based on mode
+            if template_mode == 'single':
+                template_path = template_files_data.get('single') or ctx.get('template_file')  # Backward compatibility
+            else:  # multiple mode
+                template_path = template_files_data.get('multiple', {})
+            
+            context_name = ctx.get('context_name')
+            manager.add_simulation(
+                simulation_name = context_name,
+                operation_type = operation_type,
+                operation_status = operation_status,
+                data_path = ctx.get('data_file'),
+                template_path = template_path,  # Can be single file or dict of files
+                list_jarvis_file_path = ctx.get('jarvis_files', [])
+            )
+        
+        # Prepare simulations (potentially long operation)
+        manager.prepare_all_simulations()
+        
+        # Mark success
+        result_container.success = True
+        result_container.sim_name = sim_name
+        result_container.completed = True
+        
+    except Exception as e:
+        result_container.error = str(e)
+        result_container.completed = True
+        result_container.success = False
+        logger.error(f"Error in submission thread: {e}")
+
+def render_simulation_submit():
+    """Render simulation submission with background thread processing"""
+    
     # Add simulation to config
     simulation_config = {
         'simulation_name': st.session_state.form_sim_name,
@@ -639,73 +718,118 @@ def render_simulation_submit():
     }
 
     st.session_state.simulations_config.update(simulation_config)
+    
+    # Initialize submission state if needed
+    if "submission_state" not in st.session_state:
+        st.session_state.submission_state = {
+            "running": False,
+            "started": False,
+            "completed": False,
+            "error": None,
+            "result_container": None,
+            "thread": None
+        }
+    
+    submission_state = st.session_state.submission_state
+    
     col_action1, col_action2 = st.columns([1,1])
     with col_action1:
         st.metric(
             label="Total Loaded Contexts",
             value=len(st.session_state.simulations_config['contexts']),
         )
+    
     with col_action2:
-        with st.spinner("Submitting simulation..."):
-            try:
-                sim_name = st.session_state.simulations_config['simulation_name']
-                operation_type = st.session_state.simulations_config['operation_type']
-                operation_status = st.session_state.simulations_config['operation_status']
-
-                for ctx in st.session_state.simulations_config['contexts']:
-                    # Extract template path based on mode
-                    template_mode = ctx.get('template_mode', 'single')
-                    template_files_data = ctx.get('template_files', {})
-                    
-                    # Determine template_path based on mode
-                    if template_mode == 'single':
-                        template_path = template_files_data.get('single') or ctx.get('template_file')  # Backward compatibility
-                    else:  # multiple mode
-                        template_path = template_files_data.get('multiple', {})
-                    
-                    context_name = ctx.get('context_name')
-                    st.session_state.manager.add_simulation(
-                        simulation_name = context_name,
-                        operation_type = operation_type,
-                        operation_status = operation_status,
-                        data_path = ctx.get('data_file'),
-                        template_path = template_path,  # Can be single file or dict of files
-                        list_jarvis_file_path = ctx.get('jarvis_files', [])
-                    )
-
-                # Prepare simulations
-                st.session_state.manager.prepare_all_simulations()
-                st.session_state.validation_complete = True
-                st.session_state.launch_simulation_submit = False
-
-                st.success(f"✅ Simulation '{sim_name}' with {len(st.session_state.simulations_config['contexts'])} context(s) submitted successfully!", 
-                           icon=":material/check:")
-                st.session_state.disable_submit = True
-            except Exception as e:
-                st.session_state.simulations_config = {}
-                #st.session_state.disable_submit = False
-                st.session_state.manager.clear()
-                logger.error("Error submitting simulation. Please review the configuration.")
-                st.error(f"❌ Error submitting simulation: {str(e)}")
-                st.warning("Please review your simulation configuration and try again. \n" \
-                            "Recommendation: Reset all and start over.", 
-                           icon=":material/warning:")
-                del st.session_state.manager
-
-                if st.button("Retry Submission", icon=":material/refresh:", type="primary"):
-                    logging.info("Retrying simulation submission...")
-                    st.rerun()
-                if st.button("Cancel Submission", icon=":material/close:", type="secondary"):
-                    logging.info("Simulation submission cancelled.")
+        # Show different UI based on submission state
+        if submission_state["running"]:
+            # Submission in progress
+            st.warning("⏳ Preparing simulations... Please wait.")
+            st.info("💡 You can navigate to other pages. The preparation will continue in background.")
+            
+            # Start thread ONLY if not yet started
+            if not submission_state["started"]:
+                submission_state["started"] = True
+                
+                # Create result container
+                result_container = SubmissionResult()
+                submission_state["result_container"] = result_container
+                
+                # Launch submission in background thread
+                submit_thread = threading.Thread(
+                    target=run_submission_thread,
+                    args=(st.session_state.manager, simulation_config, result_container),
+                    daemon=True
+                )
+                submit_thread.start()
+                submission_state["thread"] = submit_thread
+            
+            # Check thread status
+            result_container = submission_state.get("result_container")
+            submit_thread = submission_state.get("thread")
+            
+            if submit_thread and submit_thread.is_alive():
+                # Still running - show progress
+                st.caption(f"⏱️ Preparing {len(simulation_config['contexts'])} context(s)...")
+                with st.spinner("Loading data and templates..."):
+                    time.sleep(0.5)
+                st.rerun()
+                
+            elif result_container and result_container.completed:
+                # Finished - check result
+                if result_container.success:
+                    # Success!
+                    submission_state["running"] = False
+                    submission_state["completed"] = True
+                    st.session_state.validation_complete = True
                     st.session_state.launch_simulation_submit = False
-                    st.session_state.disable_submit = False
-                    st.session_state.disable_button_modify = False
-                    st.session_state.disable_add_context = False
-                    st.session_state.hide_context_summary = False
+                    st.session_state.disable_submit = True
+                    
+                    st.success(f"✅ Simulation '{result_container.sim_name}' with {len(simulation_config['contexts'])} context(s) submitted successfully!", 
+                               icon=":material/check:")
+                    st.balloons()
+                    time.sleep(0.5)
                     st.rerun()
-    # with st.expander("View Simulation Configuration"):
-    #     st.json(st.session_state.simulations_config)
-    # return simulation_config
+                else:
+                    # Error occurred
+                    submission_state["running"] = False
+                    submission_state["error"] = result_container.error
+                    st.error(f"❌ Error submitting simulation: {result_container.error}")
+                    st.warning("Please review your simulation configuration and try again.", 
+                               icon=":material/warning:")
+                    
+                    # Cleanup on error
+                    st.session_state.simulations_config = {}
+                    if hasattr(st.session_state, 'manager'):
+                        st.session_state.manager.clear()
+                    
+                    col_retry, col_cancel = st.columns(2)
+                    with col_retry:
+                        if st.button("Retry Submission", icon=":material/refresh:", type="primary"):
+                            # Reset state for retry
+                            submission_state["running"] = False
+                            submission_state["started"] = False
+                            submission_state["completed"] = False
+                            submission_state["error"] = None
+                            st.rerun()
+                    with col_cancel:
+                        if st.button("Cancel Submission", icon=":material/close:", type="secondary"):
+                            # Cancel and reset
+                            st.session_state.launch_simulation_submit = False
+                            st.session_state.disable_submit = False
+                            st.session_state.disable_button_modify = False
+                            st.session_state.disable_add_context = False
+                            st.session_state.hide_context_summary = False
+                            submission_state["running"] = False
+                            submission_state["started"] = False
+                            st.rerun()
+        
+        elif submission_state["completed"] and not submission_state["error"]:
+            # Already completed successfully
+            st.success("✅ Submission completed!", icon="📌")
+        
+        else:
+            # Initial state - should not reach here as button triggers callback
+            st.info("Click 'Submit Simulation' to start preparation")
 
 def display_simulation_summary(sim_name, operation_type, operation_status, current_contexts):
     """

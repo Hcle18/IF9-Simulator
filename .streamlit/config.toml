@@ -11,6 +11,11 @@ maxUploadSize = 500
 # Utile pour les gros fichiers ou DataFrames
 maxMessageSize = 500
 
+[logger]
+# Supprime les warnings ScriptRunContext des threads
+level = "error"
+messageFormat = "%(asctime)s %(message)s"
+
 [ui]
 hideTopBar = false
 

@@ -59,29 +59,74 @@ def run_calculation_thread(manager, result_container: CalculationResult):
 # SESSION STATE INITIALIZATION
 # ============================================================================
 
-def initialize_validation_state(selected_sim: str) -> Dict[str, Any]:
+def initialize_validation_state(selected_sim: str, factory=None) -> Dict[str, Any]:
     """
-    Initialize validation state for a simulation
+    Initialize validation state for a simulation.
+    If validation_complete is True, validations have already been run during 
+    prepare_all_simulations(), so we pre-populate the state with results.
     
     Args:
         selected_sim: Simulation name
+        factory: Operation factory instance (optional, for pre-loading results)
         
     Returns:
         Validation state dictionary
     """
     validation_key = f"validation_results_{selected_sim}"
     if validation_key not in st.session_state:
-        st.session_state[validation_key] = {
-            "executed": False,
-            "data_validation_done": False,
-            "template_validation_done": False,
-            "data_validation_result": None,
-            "template_validation_result": None,
-            "data_stats": None,
-            "quality_df": None,
-            "df": None,
-            "template_data": None
-        }
+        # Check if simulations have already been prepared
+        validation_complete = st.session_state.get("validation_complete", False)
+        
+        if validation_complete and factory:
+            # Validations already done during prepare_all_simulations()
+            # Pre-populate state with existing results
+            
+            # Get data validation result
+            data_validation_result = factory.ecl_operation_data.data_validation_results
+            data_is_valid = False
+            if data_validation_result and hasattr(data_validation_result, 'errors'):
+                data_is_valid = len(data_validation_result.errors) == 0
+            
+            # Get template validation result
+            template_validation_result = factory.ecl_operation_data.template_validation_results
+            template_is_valid = False
+            if template_validation_result and hasattr(template_validation_result, 'is_valid'):
+                template_is_valid = template_validation_result.is_valid
+            
+            # Get data and template data
+            df = factory.ecl_operation_data.df
+            template_data = factory.ecl_operation_data.template_data
+            
+            st.session_state[validation_key] = {
+                "executed": True,
+                "data_validation_done": True,
+                "template_validation_done": True,
+                "data_validation_result": data_validation_result,
+                "template_validation_result": template_validation_result,
+                "data_is_valid": data_is_valid,
+                "template_is_valid": template_is_valid,
+                "data_stats": None,
+                "quality_df": None,
+                "df": df.copy() if df is not None else None,
+                "template_data": template_data,
+                "auto_validation_passed": data_is_valid and template_is_valid
+            }
+        else:
+            # Fresh state - validations not yet run
+            st.session_state[validation_key] = {
+                "executed": False,
+                "data_validation_done": False,
+                "template_validation_done": False,
+                "data_validation_result": None,
+                "template_validation_result": None,
+                "data_is_valid": False,
+                "template_is_valid": False,
+                "data_stats": None,
+                "quality_df": None,
+                "df": None,
+                "template_data": None,
+                "auto_validation_passed": False
+            }
     return st.session_state[validation_key]
 
 
@@ -133,7 +178,22 @@ def run_data_validation(factory, validation_state: Dict[str, Any]) -> pd.DataFra
         validation_state["df"] = df.copy()
         validation_state["executed"] = True
         
-        st.success("✅ Data validation completed successfully!")
+        # Get data validation result
+        data_validation_result = factory.ecl_operation_data.data_validation_results
+        validation_state["data_validation_result"] = data_validation_result
+        
+        # Check if data is valid (no errors)
+        data_is_valid = False
+        if data_validation_result and hasattr(data_validation_result, 'errors'):
+            data_is_valid = len(data_validation_result.errors) == 0
+        
+        validation_state["data_is_valid"] = data_is_valid
+        
+        if data_is_valid:
+            st.success("✅ Data validation completed successfully!")
+        else:
+            st.warning("⚠️ Data validation completed with errors. Review the results below.")
+        
         return df
     else:
         st.info("📌 Displaying cached validation results (already executed)")
@@ -263,6 +323,13 @@ def run_template_validation(factory, validation_state: Dict[str, Any]):
         validation_state["template_validation_result"] = validation_result
         validation_state["template_data"] = factory.ecl_operation_data.template_data
         validation_state["executed"] = True
+        
+        # Check if template is valid
+        template_is_valid = False
+        if validation_result and hasattr(validation_result, 'is_valid'):
+            template_is_valid = validation_result.is_valid
+        
+        validation_state["template_is_valid"] = template_is_valid
         
         return validation_result
     else:
@@ -665,6 +732,45 @@ def check_calculation_status(ecl_state: Dict[str, Any], ecl_calc_key: str) -> st
         return "not_started"
 
 
+def check_all_contexts_validated(manager) -> tuple[bool, list, list]:
+    """
+    Check if all simulation contexts have been automatically validated.
+    
+    Validation is automatic: context passes if both data and template validations
+    complete successfully (template.is_valid == True).
+    
+    Args:
+        manager: SimulationManager instance
+        
+    Returns:
+        Tuple of (all_validated: bool, validated_contexts: list, missing_contexts: list)
+    """
+    simulations = manager.list_simulations()
+    validated_contexts = []
+    missing_contexts = []
+    
+    for sim_name in simulations:
+        validation_key = f"validation_results_{sim_name}"
+        
+        # Check if validation state exists
+        if validation_key not in st.session_state:
+            missing_contexts.append(sim_name)
+            continue
+        
+        validation_state = st.session_state[validation_key]
+        
+        # Check automatic validation status
+        auto_validation_passed = validation_state.get("auto_validation_passed", False)
+        
+        if auto_validation_passed:
+            validated_contexts.append(sim_name)
+        else:
+            missing_contexts.append(sim_name)
+    
+    all_validated = len(missing_contexts) == 0
+    return all_validated, validated_contexts, missing_contexts
+
+
 def display_calculation_ui(ecl_state: Dict[str, Any], manager, ecl_calc_key: str):
     """
     Display ECL calculation UI based on current state
@@ -674,10 +780,84 @@ def display_calculation_ui(ecl_state: Dict[str, Any], manager, ecl_calc_key: str
         manager: SimulationManager instance
         ecl_calc_key: Session state key for this calculation
     """
+    # Check if all contexts are validated
+    all_validated, validated_contexts, missing_contexts = check_all_contexts_validated(manager)
+    
     col1, col2, col3 = st.columns([2, 2, 1])
     
     with col1:
-        st.info("📝 Data validation complete. Review the quality metrics above before proceeding.")
+        if all_validated:
+            st.success(f"✅ All {len(validated_contexts)} context(s) validated and confirmed!")
+            st.info("🚀 You can now proceed with ECL calculations for all contexts.")
+        else:
+            st.warning(f"⚠️ {len(missing_contexts)} context(s) still need validation before running ECL calculations.")
+            
+            # Display missing contexts with detailed status
+            with st.expander("📋 Show detailed validation status", expanded=False):
+                st.markdown("### ✅ Validated Contexts:")
+                if validated_contexts:
+                    for ctx in validated_contexts:
+                        st.success(f"✓ **{ctx}** - All validations passed, ready for calculation")
+                else:
+                    st.info("None yet")
+                
+                st.markdown("---")
+                st.markdown("### ⚠️ Contexts Pending Validation:")
+                if missing_contexts:
+                    for ctx in missing_contexts:
+                        validation_key = f"validation_results_{ctx}"
+                        if validation_key in st.session_state:
+                            val_state = st.session_state[validation_key]
+                            data_done = val_state.get("data_validation_done", False)
+                            template_done = val_state.get("template_validation_done", False)
+                            
+                            # Get data validation result
+                            data_valid = val_state.get("data_is_valid", False)
+                            
+                            # Get template validation result
+                            template_result = val_state.get("template_validation_result")
+                            template_valid = False
+                            if template_result and hasattr(template_result, 'is_valid'):
+                                template_valid = template_result.is_valid
+                            
+                            status_parts = []
+                            if not data_done:
+                                status_parts.append("❌ Data validation pending")
+                            elif data_valid:
+                                status_parts.append("✅ Data validation passed")
+                            else:
+                                status_parts.append("❌ Data validation failed")
+                            
+                            if not template_done:
+                                status_parts.append("❌ Template validation pending")
+                            elif template_valid:
+                                status_parts.append("✅ Template validation passed")
+                            else:
+                                status_parts.append("❌ Template validation failed")
+                            
+                            # Determine overall status
+                            if data_done and template_done and data_valid and template_valid:
+                                st.success(f"**{ctx}**")
+                            elif data_done and template_done and (not data_valid or not template_valid):
+                                error_msg = f"**{ctx}** - "
+                                errors = []
+                                if not data_valid:
+                                    errors.append("Data errors")
+                                if not template_valid:
+                                    errors.append("Template errors")
+                                error_msg += " & ".join(errors) + " found"
+                                st.error(error_msg)
+                            else:
+                                st.warning(f"**{ctx}**")
+                            
+                            st.caption(" | ".join(status_parts))
+                        else:
+                            st.error(f"• **{ctx}** - Not started")
+                else:
+                    st.info("All validated!")
+                
+                st.markdown("---")
+                st.info("💡 **Next steps:**\n1. Select a context from the dropdown above\n2. Run data validation (Tab 1)\n3. Run template validation (Tab 2)\n4. Validation is automatic - context passes if no errors found\n5. Repeat for all contexts")
     
     with col2:
         if ecl_state["running"]:
@@ -709,11 +889,22 @@ def display_calculation_ui(ecl_state: Dict[str, Any], manager, ecl_calc_key: str
                 st.rerun()
         
         elif not ecl_state["executed"]:
-            # Show button to start
-            if st.button("🧮 Run ECL Calculations", type="primary", use_container_width=True):
-                ecl_state["running"] = True
-                ecl_state["started"] = False
-                st.rerun()
+            # Show button to start (only if all contexts validated)
+            if all_validated:
+                if st.button("🧮 Run ECL Calculations", type="primary", use_container_width=True):
+                    ecl_state["running"] = True
+                    ecl_state["started"] = False
+                    st.rerun()
+            else:
+                # Button disabled with explanation
+                st.button(
+                    "🧮 Run ECL Calculations", 
+                    type="primary", 
+                    use_container_width=True,
+                    disabled=True,
+                    help=f"Complete validation for all {len(missing_contexts)} remaining context(s) first"
+                )
+                st.caption(f"⚠️ Validate all contexts first ({len(validated_contexts)}/{len(validated_contexts) + len(missing_contexts)} done)")
         
         else:
             # Already executed

@@ -92,8 +92,8 @@ with col_sel2:
 
 factory = manager.get_simulation(selected_sim)
 
-# Initialize states
-validation_state = initialize_validation_state(selected_sim)
+# Initialize states (pass factory to pre-populate if validations already done)
+validation_state = initialize_validation_state(selected_sim, factory)
 ecl_state = initialize_calculation_state(selected_sim)
 
 # Show status of cached validations
@@ -115,6 +115,21 @@ with tab1:
     try:
         # Run validation (or use cached results)
         df = run_data_validation(factory, validation_state)
+        
+        # Display validation errors and warnings if any
+        data_validation_result = validation_state.get("data_validation_result")
+        if data_validation_result:
+            if hasattr(data_validation_result, 'errors') and data_validation_result.errors:
+                st.markdown("#### ❌ Data Validation Errors")
+                for error in data_validation_result.errors:
+                    st.error(f"• {error}")
+            
+            if hasattr(data_validation_result, 'warnings') and data_validation_result.warnings:
+                st.markdown("#### ⚠️ Data Validation Warnings")
+                for warning in data_validation_result.warnings:
+                    st.warning(f"• {warning}")
+        
+        st.markdown("---")
         
         # Display metrics
         display_data_quality_metrics(df)
@@ -201,6 +216,80 @@ with tab3:
 # ============================================================================
 st.markdown("#### 🔍 (Optional) Data Scope Filter")
 df_for_calc = get_calculation_dataframe(factory, validation_state, selected_sim)
+
+
+# ============================================================================
+# AUTOMATIC VALIDATION STATUS
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### ✅ Validation Status")
+
+# Check if both validations are complete
+data_validated = validation_state.get("data_validation_done", False)
+template_validated = validation_state.get("template_validation_done", False)
+
+# Get validation results
+data_is_valid = validation_state.get("data_is_valid", False)
+template_validation_result = validation_state.get("template_validation_result")
+template_is_valid = False
+if template_validation_result and hasattr(template_validation_result, 'is_valid'):
+    template_is_valid = template_validation_result.is_valid
+
+# Automatic validation: context is valid if both validations pass
+if data_validated and template_validated:
+    if data_is_valid and template_is_valid:
+        st.success(f"✅ **Context '{selected_sim}' is validated and ready for ECL calculation!**")
+        st.info("""
+        **Validation Summary:**
+        - ✅ Data validation passed (no errors)
+        - ✅ Template validation passed (no errors)
+        - ✅ Context ready for ECL calculation
+        """)
+        # Store automatic validation
+        validation_state["auto_validation_passed"] = True
+    else:
+        st.error(f"❌ **Context '{selected_sim}' validation failed!**")
+        
+        # Build detailed error message
+        issues = []
+        if not data_is_valid:
+            issues.append("- ❌ Data validation failed")
+            # Show errors
+            data_validation_result = validation_state.get("data_validation_result")
+            if data_validation_result and hasattr(data_validation_result, 'errors') and data_validation_result.errors:
+                st.markdown("**Data Validation Errors:**")
+                for error in data_validation_result.errors:
+                    st.error(f"  • {error}")
+        else:
+            issues.append("- ✅ Data validation passed")
+        
+        if not template_is_valid:
+            issues.append("- ❌ Template validation failed")
+            # Errors are shown in Tab 2
+            st.info("💡 See Template Validation tab for details")
+        else:
+            issues.append("- ✅ Template validation passed")
+        
+        st.warning("**Validation Issues:**\n" + "\n".join(issues))
+        
+        validation_state["auto_validation_passed"] = False
+else:
+    # Show what's missing (should not happen if validation_complete is True)
+    st.warning("⚠️ Complete all validation steps for this context.")
+    
+    missing_steps = []
+    if not data_validated:
+        missing_steps.append("📊 Data Validation (Tab 1)")
+    if not template_validated:
+        missing_steps.append("📋 Template Validation (Tab 2)")
+    
+    st.markdown("**Pending validation steps:**")
+    for step in missing_steps:
+        st.info(f"• {step}")
+    
+    st.info("💡 Navigate to the tabs above to complete the required validations.")
+    validation_state["auto_validation_passed"] = False
 
 
 # ============================================================================

@@ -19,3 +19,9 @@ pip-wheel-metadata/
 
 # Sample folder
 sample/
+logs/
+inputs/
+notebooks/
+
+# Cache folder for ECL calculation results
+cache/
