@@ -395,6 +395,7 @@ class SimulationManager:
             raise ValueError(f"Simulation '{simulation_name}' not found")
         
         return self.simulations[simulation_name].ecl_operation_data.df
+
     
     def clear(self) -> None:
         """Clear all simulations and shared data contexts."""

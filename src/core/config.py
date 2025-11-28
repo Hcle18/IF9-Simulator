@@ -254,31 +254,24 @@ RATING_DEFAULT_CONFIG: Dict[OperationType, List[Any]] = {
 }
 
 # Define dir
-CONFIG_PARENT_DIR: Dict[Tuple[OperationType, OperationStatus], str] = {
-    # Non Retail S1+S2 configuration
-    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "./inputs",
-    # Retail S1+S2 configuration
-    (OperationType.RETAIL, OperationStatus.PERFORMING): "./inputs",
-    # Retail S3 configuration
-    (OperationType.RETAIL, OperationStatus.DEFAULTED): "./inputs"
-}
+CONFIG_PARENT_DIR = "./"
 
 CONFIG_DATA_DIR: Dict[Tuple[OperationType, OperationStatus], str] = {
     # Non Retail S1+S2 configuration
-    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "data/Non Retail/S1-S2",
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "inputs/data/Non Retail/S1-S2",
     # Retail S1+S2 configuration
-    (OperationType.RETAIL, OperationStatus.PERFORMING): "data/Retail/S1-S2",
+    (OperationType.RETAIL, OperationStatus.PERFORMING): "inputs/data/Retail/S1-S2",
     # Retail S3 configuration
-    (OperationType.RETAIL, OperationStatus.DEFAULTED): "data/Retail/S3"
+    (OperationType.RETAIL, OperationStatus.DEFAULTED): "inputs/data/Retail/S3"
 }
 
 CONFIG_TEMPLATES_DIR: Dict[Tuple[OperationType, OperationStatus], str] = {
     # Non Retail S1+S2 configuration
-    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "templates/Non Retail/S1-S2",
+    (OperationType.NON_RETAIL, OperationStatus.PERFORMING): "inputs/templates/Non Retail/S1-S2",
     # Retail S1+S2 configuration
-    (OperationType.RETAIL, OperationStatus.PERFORMING): "templates/Retail/S1-S2",
+    (OperationType.RETAIL, OperationStatus.PERFORMING): "inputs/templates/Retail/S1-S2",
     # Retail S3 configuration
-    (OperationType.RETAIL, OperationStatus.DEFAULTED): "templates/Retail/S3"
+    (OperationType.RETAIL, OperationStatus.DEFAULTED): "inputs/templates/Retail/S3"
 }
 
 CONFIG_DEFAULT_TEMPLATES: Dict[Tuple[OperationType, OperationStatus], str] = {

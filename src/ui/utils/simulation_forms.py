@@ -1,3 +1,17 @@
+def reset_context_indices_and_paths(operation_type, operation_status):
+    """Reset default indices and base paths when operation type/status changes"""
+    st.session_state.base_path = str(cst.CONFIG_DATA_DIR.get((operation_type, operation_status)))
+    st.session_state.default_index = 0
+    st.session_state.jarvis_base_path = str(cst.CONFIG_DATA_DIR.get((operation_type, operation_status)))
+    st.session_state.default_jarvis_index = 0
+    st.session_state.template_base_path = str(cst.CONFIG_TEMPLATES_DIR.get((operation_type, operation_status)))
+    st.session_state.default_template_index = 0
+    for tpl_key, tpl_config in TEMPLATE_TYPES.items():
+        base_key = tpl_config.get('base_key', tpl_key)
+        st.session_state[f"default_template_index_{base_key}"] = 0
+    if "folder_selection_version" not in st.session_state:
+        st.session_state.folder_selection_version = 0
+    st.session_state.folder_selection_version += 1
 """
 Reusable components for the Simulation Configuration page
 Separated into functions for better maintainability
@@ -15,7 +29,7 @@ from src.factory import simulation_manager
 from src.ui.utils.get_directories import get_subdirectories, format_dir_path, get_files_in_directory
 logger = logging.getLogger(__name__)  
 
-#parent_dir = Path(__file__).parent.parent.parent.parent
+parent_dir = Path(__file__).parent.parent.parent.parent
 sample_dir = Path(__file__).parent.parent.parent.parent / "sample"  
 
 @st.dialog(title="Create New Simulation")
@@ -117,6 +131,8 @@ def create_simulation_dialog():
                 st.session_state.form_operation_type = operation_type
                 st.session_state.form_operation_status = operation_status
                 st.session_state.form_sim_name = sim_name
+                # Reset indices and paths for new operation type/status
+                reset_context_indices_and_paths(operation_type, operation_status)
                 st.rerun()
 
     if st.session_state.get("clear_rerun", False):
@@ -149,8 +165,44 @@ EXAMPLE_TEMPLATE_PATHS = {
 }
 
 
-def _initialize_context_session_state():
+def _initialize_context_session_state(operation_type, operation_status):
+    # Initialiser les index pour chaque template type (base_key)
+    for tpl_key, tpl_config in TEMPLATE_TYPES.items():
+        base_key = tpl_config.get('base_key', tpl_key)
+        key_name = f"default_template_index_{base_key}"
+        if key_name not in st.session_state:
+            st.session_state[key_name] = 0
+
+
     """Initialize session state for context form"""
+
+    if "base_path" not in st.session_state:
+        st.session_state.base_path = str(cst.CONFIG_DATA_DIR.get((operation_type, operation_status)))
+
+    if "sub_dirs" not in st.session_state:
+        st.session_state.sub_dirs = get_subdirectories(st.session_state.base_path)
+
+    if "default_index" not in st.session_state:
+        st.session_state.default_index = 0
+    
+    # Initialize jarvis base path and default index
+    if "jarvis_base_path" not in st.session_state:
+        st.session_state.jarvis_base_path = str(cst.CONFIG_DATA_DIR.get((operation_type, operation_status)))
+    
+    if "default_jarvis_index" not in st.session_state:
+        st.session_state.default_jarvis_index = 0
+    
+    # Initialize template base path and default index
+    if "template_base_path" not in st.session_state:
+        st.session_state.template_base_path = str(cst.CONFIG_TEMPLATES_DIR.get((operation_type, operation_status)))
+    
+    if "default_template_index" not in st.session_state:
+        st.session_state.default_template_index = 0
+    
+    # Version counter to force widget refresh without rerun
+    if "folder_selection_version" not in st.session_state:
+        st.session_state.folder_selection_version = 0
+
     if "selected_data_file" not in st.session_state:
         st.session_state.selected_data_file = None
     
@@ -170,6 +222,112 @@ def _initialize_context_session_state():
         st.session_state.selected_jarvis_files = []
 
 
+def update_scope_folder():
+    """Update folder indexes based on selected scope"""
+    selected_scope = st.session_state.get("selected_scope", "")
+    
+    # Don't update if empty option is selected
+    if not selected_scope or selected_scope == "":
+        return
+    
+    if st.session_state.get("base_path"):
+        # === Update Data Folder Index ===
+        base_path = st.session_state.base_path
+        sub_dirs = get_subdirectories(base_path)
+        keywords = str(Path(base_path) / selected_scope / "PROD")
+        select_dirs = [d for d in sub_dirs if keywords in d]
+        sorted_dirs = sorted(select_dirs, reverse=True)
+        
+        if sorted_dirs:
+            st.session_state.default_index = sub_dirs.index(sorted_dirs[0])
+        else:
+            st.session_state.default_index = 0
+        
+        # === Update Jarvis Folder Index ===
+        if "jarvis_base_path" in st.session_state:
+            jarvis_base_path = st.session_state.jarvis_base_path
+            jarvis_sub_dirs = get_subdirectories(jarvis_base_path)
+            jarvis_keywords = str(Path(jarvis_base_path) / selected_scope / "PROD")
+            jarvis_select_dirs = [d for d in jarvis_sub_dirs if jarvis_keywords in d]
+            jarvis_sorted_dirs = sorted(jarvis_select_dirs, reverse=True)
+            
+            if jarvis_sorted_dirs:
+                st.session_state.default_jarvis_index = jarvis_sub_dirs.index(jarvis_sorted_dirs[0])
+            else:
+                st.session_state.default_jarvis_index = 0
+        
+        # === Update Template Folder Index for each base_key ===
+        if "template_base_path" in st.session_state:
+            template_base_path = st.session_state.template_base_path
+            template_sub_dirs = get_subdirectories(template_base_path)
+            template_keywords = str(Path(template_base_path) / selected_scope / "PROD")
+            
+            if st.session_state.get("template_mode", "single") == "single":
+                print("Yes, single")
+                # Single template mode : on prend le dossier le plus récent qui finit par 'Single template'
+                single_template_dirs = [d for d in template_sub_dirs if template_keywords in d and d.endswith("Single template")]
+                single_template_dirs = sorted(single_template_dirs, reverse=True)
+                if single_template_dirs:
+                    st.session_state.default_template_index = template_sub_dirs.index(single_template_dirs[0])
+                else:
+                    st.session_state.default_template_index = 0
+            else:
+                # Multiple template mode
+                print("Yes, Multiple mode")
+                for tpl_key, tpl_config in TEMPLATE_TYPES.items():
+                    base_key = tpl_config.get('base_key', tpl_key)
+                    template_select_dirs = [d for d in template_sub_dirs if template_keywords in d and d.endswith(str(base_key))]
+                    template_sorted_dirs = sorted(template_select_dirs, reverse=True)
+                    key_name = f"default_template_index_{base_key}"
+                    if template_sorted_dirs:
+                        st.session_state[key_name] = template_sub_dirs.index(template_sorted_dirs[0])
+                    else:
+                        st.session_state[key_name] = 0
+        
+        # Increment version to force widget refresh without closing dialog
+        st.session_state.folder_selection_version += 1
+
+def _render_sub_scope(operation_type, operation_status):
+    """Render sub-scope selection to autofill select folder"""
+    
+    st.markdown("""
+        <h2 style="margin-bottom: 0.5rem; margin-top: -1rem;">
+            🎯 Quick Folder Selection
+        </h2>
+        """, unsafe_allow_html=True)
+
+    # Get dir from data_dir config
+    data_dir_suffix = str(cst.CONFIG_DATA_DIR.get((operation_type, operation_status)))
+
+    # Get list of scopes = first level subdirectories
+    try:
+        path = Path(data_dir_suffix)
+        if not path.exists():
+            st.session_state.list_scopes = [""]
+        else:
+            list_scopes = [d.name for d in path.iterdir() if d.is_dir()]
+            # Add empty option at the beginning
+            st.session_state.list_scopes = [""] + sorted(list_scopes)
+    except Exception as e:
+        st.session_state.list_scopes = [""]
+
+    # Render selectbox for scopes
+    if len(st.session_state.list_scopes) > 1 or (len(st.session_state.list_scopes) == 1 and st.session_state.list_scopes[0] != ""):
+        selected_scope = st.selectbox(
+            "Select Sub-Scope (auto-selects most recent PROD folder):",
+            options=st.session_state.list_scopes,
+            index=0,
+            format_func=lambda x: "-- Select a scope --" if x == "" else x,
+            key="selected_scope",
+            on_change=update_scope_folder,
+            help="Selecting a scope will automatically choose the most recent PROD folder for Data, Jarvis, and Templates"
+        )
+        
+        if selected_scope and selected_scope != "":
+            st.info(f"📂 Auto-selecting most recent folder in **{selected_scope}/PROD**")
+    else:
+        st.warning("No sub-scopes found in the data directory")
+
 def _render_context_name_input():
     """Render context name input field"""
     st.markdown("""
@@ -188,13 +346,11 @@ def _render_context_name_input():
     )
 
 
-def _render_jarvis_file_selector(parent_dir, operation_type, operation_status):
+def _render_jarvis_file_selector(operation_type, operation_status):
     """Render Jarvis file selector (for Non Retail Performing only)"""
     st.markdown("**📊 Jarvis Files**")
     
-    jarvis_suffix_path = cst.CONFIG_DATA_DIR.get((operation_type, operation_status))
-    jarvis_base_path = str(parent_dir / jarvis_suffix_path)
-    
+    jarvis_base_path = str(cst.CONFIG_DATA_DIR.get((operation_type, operation_status)))
     jarvis_dirs = get_subdirectories(jarvis_base_path)
     
     jarvis_search_input = st.text_input(
@@ -208,11 +364,21 @@ def _render_jarvis_file_selector(parent_dir, operation_type, operation_status):
     if jarvis_search_input:
         jarvis_dirs = [d for d in jarvis_dirs if jarvis_search_input.lower() in d.lower()]
     
+    # Get default index for jarvis from session state
+    default_jarvis_index = st.session_state.get("default_jarvis_index", 0)
+    # Ensure index is within bounds
+    if default_jarvis_index >= len(jarvis_dirs):
+        default_jarvis_index = 0
+    
+    # Include version in key to force refresh when scope changes
+    version = st.session_state.get("folder_selection_version", 0)
+    
     selected_jarvis_dir = st.selectbox(
         "Select folder:",
         options=jarvis_dirs,
+        index=default_jarvis_index,
         format_func=lambda x: format_dir_path(x, jarvis_base_path),
-        key="jarvis_folder_select"
+        key=f"jarvis_folder_select_v{version}"
     )
     
     jarvis_files = get_files_in_directory(selected_jarvis_dir, extensions=['.zip', '.csv'])
@@ -291,7 +457,7 @@ def _render_template_tab(tpl_key, tpl_config, parent_dir, operation_type, operat
             file_type="Excel",
             extensions=['.xlsx', '.xls'],
             base_path_suffix=cst.CONFIG_TEMPLATES_DIR.get((operation_type, operation_status)),
-            key_prefix=f"template_{tpl_key.lower()}",
+            key_prefix=f"template_{base_key.lower()}",
             parent_dir=parent_dir
         )
     
@@ -354,24 +520,41 @@ def render_file_selector(label, file_type, extensions,
     # Get directories
     dirs = get_subdirectories(base_path)
     
-    # Text input for search subdirectories
-    search_input = st.text_input(
-        "Search folders:",
-        value="",
-        placeholder="Type to filter folders. Example: 2025Q3, SIMU",
-        key=f"{key_prefix}_search_input",
-        icon=":material/search:"
-    )
+    # # Text input for search subdirectories
+    # search_input = st.text_input(
+    #     "Search folders:",
+    #     value="",
+    #     placeholder="Type to filter folders. Example: 2025Q3, SIMU",
+    #     key=f"{key_prefix}_search_input",
+    #     icon=":material/search:"
+    # )
 
-    # Filter directories based on search input
-    if search_input:
-        dirs = [d for d in dirs if search_input.lower() in d.lower()]
+    # # Filter directories based on search input
+    # if search_input:
+    #     dirs = [d for d in dirs if search_input.lower() in d.lower()]
 
+    # Determine which default index to use based on key_prefix
+    version = st.session_state.get("folder_selection_version", 0)
+    default_index = 0
+    if key_prefix.startswith("template_single"):
+        default_index = st.session_state.get("default_template_index", 0)
+    elif key_prefix.startswith("template_") and key_prefix != "template_single":
+        # key_prefix = template_{base_key}
+        base_key = key_prefix.replace("template_", "")
+        index_key = f"default_template_index_{base_key.upper()}" if base_key else "default_template_index"
+        default_index = st.session_state.get(index_key, 0)
+    else:
+        default_index = st.session_state.get("default_index", 0)
+
+    # Ensure index is within bounds
+    if default_index >= len(dirs):
+        default_index = 0
     selected_dir = st.selectbox(
         "Select folder:",
         options=dirs,
+        index=default_index,
         format_func=lambda x: format_dir_path(x, base_path),
-        key=f"{key_prefix}_folder_select",
+        key=f"{key_prefix}_folder_select_v{version}",
         width="stretch"
     )
     
@@ -396,7 +579,7 @@ def render_context_form(operation_type, operation_status):
     """Render the context creation form"""
     
     # Initialize session state
-    _initialize_context_session_state()
+    _initialize_context_session_state(operation_type, operation_status)
     
     # Dialog styling
     st.markdown("""
@@ -407,11 +590,14 @@ def render_context_form(operation_type, operation_status):
         </style>
         """, unsafe_allow_html=True)
     
+    # Sub-scope selection
+    _render_sub_scope(operation_type, operation_status)
+
     # Context name input
     context_name = _render_context_name_input()
     
     # Get parent directory
-    parent_dir = Path(cst.CONFIG_PARENT_DIR.get((operation_type, operation_status)))
+    parent_dir = Path(cst.CONFIG_PARENT_DIR)
 
     # Data and Jarvis File Selection
     if operation_type == cst.OperationType.NON_RETAIL and operation_status == cst.OperationStatus.PERFORMING:
@@ -423,7 +609,7 @@ def render_context_form(operation_type, operation_status):
                 key_prefix="data", parent_dir=parent_dir
             )
         with col2:
-            _render_jarvis_file_selector(parent_dir, operation_type, operation_status)
+            _render_jarvis_file_selector(operation_type, operation_status)
     else:
         st.session_state.selected_data_file = render_file_selector(
             label="📁 Data File", file_type="CSV/Excel/Zip", extensions=['.zip'],
@@ -447,7 +633,8 @@ def render_context_form(operation_type, operation_status):
         index= 1,
         key="template_mode_radio",
         horizontal=True,
-        help="Single: One file with all sheets | Multiple: Separate files for PD, LGD, CCF, etc."
+        help="Single: One file with all sheets | Multiple: Separate files for PD, LGD, CCF, etc.",
+        on_change=update_scope_folder
     )
     
     # Update session state based on selection
@@ -611,7 +798,7 @@ def render_context_form(operation_type, operation_status):
 
         if cancelled:
             # Nettoyer les fichiers sélectionnés
-            _initialize_context_session_state()
+            _initialize_context_session_state(operation_type, operation_status)
             st.rerun()        
         
         # return data_file, template_file, jarvis_files, context_name, submitted, cancelled
@@ -851,6 +1038,8 @@ def display_simulation_summary(sim_name, operation_type, operation_status, curre
             if st.button("Modify Simulation", icon=":material/edit:", type="secondary", 
                          use_container_width=True,
                          disabled=st.session_state.disable_button_modify):
+                # Reset indices and paths before opening dialog
+                reset_context_indices_and_paths(st.session_state.form_operation_type, st.session_state.form_operation_status)
                 create_simulation_dialog()
         with col_clear:
             if st.button("Clear Simulation", icon=":material/delete:", 

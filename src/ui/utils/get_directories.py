@@ -66,7 +66,6 @@ def format_dir_path(dir_path, base_path):
         else:
             # Calculate indentation level based on path depth
             depth = len(rel_path.parts) - 1
-            print(rel_path)
             # Use non-breaking spaces and tree symbols for better display in selectbox
             indent = "│" + "─" * (depth * 2)  # Tree-like structure
             return f"{indent}📂 {rel_path}"
